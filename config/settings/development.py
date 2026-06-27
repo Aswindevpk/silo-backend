@@ -1,0 +1,46 @@
+from .base import *
+import environ
+
+# Load environment variables from .env file
+env = environ.Env()
+
+SECRET_KEY = env('SECRET_KEY')
+
+DEBUG = True
+
+ALLOWED_HOSTS = ['192.168.27.52','localhost','127.0.0.1','*']
+
+if env('DB_NAME'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': env('DB_NAME'),  
+            'USER': env('DB_USER'),  
+            'PASSWORD': env('DB_PASSWORD'), 
+            'HOST': env('DB_HOST'),
+            'PORT': '5432',  
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+
+
+#static files directory in the project
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+
+
+
+
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+    
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'

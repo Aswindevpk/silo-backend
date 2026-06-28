@@ -18,8 +18,15 @@ DEBUG = False
 # Explicitly define your domain variants. Never leave a wildcard '*' active here.
 ALLOWED_HOSTS = ['silo-api.aswindev.in']
 
+CORS_ALLOWED_ORIGINS = [
+    'https://silo.aswindev.in',
+]
+# If you are passing HTTP cookies or Authorization headers:
+CORS_ALLOW_CREDENTIALS = True
+
 CSRF_TRUSTED_ORIGINS = [
-    'https://silo.aswindev.in', # Good to have for when you add SSL later
+    'https://silo.aswindev.in',      # Your React app
+    'https://silo-api.aswindev.in',  # Your Django backend itself (for Admin/Forms)
 ]
 
 # 2. --- DYNAMIC DATABASE SWITCHER (PSQL vs SQLITE) ---

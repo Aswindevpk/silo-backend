@@ -1,4 +1,5 @@
 import logging  # 1. Import logging
+from unittest.mock import patch
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -17,6 +18,7 @@ class RegisterAPITestCase(APITestCase):
         self.reset_url = reverse('reset-password')
         self.login_url = reverse('login')
         self.refresh_url = reverse('token-refresh')
+        self.google_login_url = reverse('google-login')
         self.valid_payload = {
             'username': 'testuser',
             'email': 'testuser@example.com',
@@ -256,11 +258,13 @@ class RegisterAPITestCase(APITestCase):
     def test_login_success(self):
         """Test successful login returns access and refresh tokens"""
         # Create user
-        CustomUser.objects.create_user(
+        user = CustomUser.objects.create_user(
             username='testuser',
             email='testuser@example.com',
             password='StrongPassword123'
         )
+        user.is_verified = True
+        user.save()
         payload = {
             'email': 'testuser@example.com',
             'password': 'StrongPassword123'
@@ -284,14 +288,31 @@ class RegisterAPITestCase(APITestCase):
         response = self.client.post(self.login_url, payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_token_refresh_success(self):
-        """Test successful token refresh returns new access token"""
-        # Create user
+    def test_login_unverified_user(self):
+        """Test login fails if user is not verified"""
         CustomUser.objects.create_user(
             username='testuser',
             email='testuser@example.com',
             password='StrongPassword123'
         )
+        payload = {
+            'email': 'testuser@example.com',
+            'password': 'StrongPassword123'
+        }
+        response = self.client.post(self.login_url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['detail'], "Email is not verified. Please verify your email to log in.")
+
+    def test_token_refresh_success(self):
+        """Test successful token refresh returns new access token"""
+        # Create user
+        user = CustomUser.objects.create_user(
+            username='testuser',
+            email='testuser@example.com',
+            password='StrongPassword123'
+        )
+        user.is_verified = True
+        user.save()
         # Login to get refresh token
         login_payload = {
             'email': 'testuser@example.com',
@@ -314,3 +335,73 @@ class RegisterAPITestCase(APITestCase):
         }
         response = self.client.post(self.refresh_url, payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @patch('requests.post')
+    @patch('requests.get')
+    def test_google_login_success_new_user(self, mock_get, mock_post):
+        """Test successful Google login creates a new user and returns JWT tokens"""
+        # Mock token response
+        mock_post.return_value.json.return_value = {
+            'access_token': 'dummy_access_token',
+        }
+        # Mock user info response
+        mock_get.return_value.json.return_value = {
+            'email': 'googletest@example.com',
+            'name': 'Google User',
+        }
+
+        payload = {'code': 'dummy_auth_code'}
+        response = self.client.post(self.google_login_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+        self.assertEqual(response.data['user']['email'], 'googletest@example.com')
+        self.assertEqual(response.data['user']['username'], 'Google User')
+
+        # Verify user was created in the database
+        user = CustomUser.objects.get(email='googletest@example.com')
+        self.assertEqual(user.username, 'Google User')
+        self.assertTrue(user.is_verified)
+
+    @patch('requests.post')
+    @patch('requests.get')
+    def test_google_login_success_existing_user(self, mock_get, mock_post):
+        """Test successful Google login with an existing user returns JWT tokens"""
+        CustomUser.objects.create_user(
+            username='Google User',
+            email='googletest@example.com',
+            password='Password123'
+        )
+
+        mock_post.return_value.json.return_value = {
+            'access_token': 'dummy_access_token',
+        }
+        mock_get.return_value.json.return_value = {
+            'email': 'googletest@example.com',
+            'name': 'Google User',
+        }
+
+        payload = {'code': 'dummy_auth_code'}
+        response = self.client.post(self.google_login_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+        self.assertIn('refresh', response.data)
+
+        # Ensure no duplicate user was created
+        self.assertEqual(CustomUser.objects.filter(email='googletest@example.com').count(), 1)
+
+    @patch('requests.post')
+    def test_google_login_invalid_code(self, mock_post):
+        """Test Google login fails when authorization code exchange fails"""
+        mock_post.return_value.json.return_value = {
+            'error': 'invalid_grant',
+            'error_description': 'Bad Request'
+        }
+
+        payload = {'code': 'invalid_code'}
+        response = self.client.post(self.google_login_url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)

@@ -55,3 +55,29 @@ class LoginSerializer(serializers.Serializer):
     """Serializer for manual login authentication"""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
+
+
+from google.oauth2 import id_token
+from django.conf import settings
+
+class GoogleLoginSerializer(serializers.Serializer):
+    """Serializer for Google OAuth ID Token validation"""
+    id_token = serializers.CharField()
+
+    def validate_id_token(self, value):
+        from google.auth.transport import requests
+        try:
+            # Verify the token against Google's servers
+            id_info = id_token.verify_oauth2_token(
+                value,
+                requests.Request(),
+                settings.GOOGLE_OAUTH2_CLIENT_ID
+            )
+
+            # Ensure token issuer is Google
+            if id_info['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                raise serializers.ValidationError('Wrong token issuer.')
+
+            return id_info
+        except Exception as e:
+            raise serializers.ValidationError(f'Invalid Google Token: {str(e)}')

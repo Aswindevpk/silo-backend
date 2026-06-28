@@ -70,3 +70,6 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
+
+# Allow all CORS origins in local development environment
+CORS_ALLOW_ALL_ORIGINS = True

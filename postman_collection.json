@@ -200,6 +200,34 @@
 				}
 			},
 			"response": []
+		},
+		{
+			"name": "Google Login",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"id_token\": \"YOUR_GOOGLE_ID_TOKEN_HERE\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/google-login/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"google-login",
+						""
+					]
+				}
+			},
+			"response": []
 		}
 	],
 	"event": [

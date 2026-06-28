@@ -16,11 +16,10 @@ if not SECRET_KEY:
 DEBUG = False
 
 # Explicitly define your domain variants. Never leave a wildcard '*' active here.
-ALLOWED_HOSTS = ['dev.aswindev.in']
+ALLOWED_HOSTS = ['silo-api.aswindev.in']
 
 CSRF_TRUSTED_ORIGINS = [
-    'http://dev.aswindev.in',
-    'https://dev.aswindev.in', # Good to have for when you add SSL later
+    'https://silo.aswindev.in', # Good to have for when you add SSL later
 ]
 
 # 2. --- DYNAMIC DATABASE SWITCHER (PSQL vs SQLITE) ---

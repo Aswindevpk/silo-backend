@@ -44,3 +44,29 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
     
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Dev-only Installed Apps
+INSTALLED_APPS += [
+    'drf_spectacular',
+    'silk',
+]
+
+# Dev-only Middleware (prepend SilkyMiddleware)
+MIDDLEWARE = [
+    'silk.middleware.SilkyMiddleware',
+] + MIDDLEWARE
+
+# DRF Spectacular Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Silo API',
+    'DESCRIPTION': 'API for Silo application',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}

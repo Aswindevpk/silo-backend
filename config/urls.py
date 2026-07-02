@@ -5,6 +5,9 @@ from django.conf import settings
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/users/', include('apps.users.urls')),
+    path('api/workspaces/', include('apps.workspaces.urls')),
+    path('api/chats/', include('apps.chats.urls')),
+    path('api/calls/', include('apps.calls.urls')),
 ]
 
 if 'silk' in settings.INSTALLED_APPS:

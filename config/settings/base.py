@@ -24,6 +24,9 @@ INSTALLED_APPS = [
 
     # Local Apps
     'apps.users',
+    'apps.workspaces',
+    'apps.chats',
+    'apps.calls',
 ]
 
 MIDDLEWARE = [

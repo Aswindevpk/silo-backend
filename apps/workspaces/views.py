@@ -47,6 +47,15 @@ class WorkspaceListCreateView(APIView):
         )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+class WorkspaceMembersListView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceMember]
+
+    def get(self, request, slug):
+        workspace = get_object_or_404(Workspace, slug=slug)
+        memberships = WorkspaceMember.objects.filter(workspace=workspace).select_related('user')
+        serializer = WorkspaceMemberSerializer(memberships, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 class WorkspaceInviteView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsWorkspaceAdminOrOwner]
 

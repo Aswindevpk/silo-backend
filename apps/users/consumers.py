@@ -55,6 +55,18 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
         """Executes strict garbage collection routines to preserve memory integrity."""
         if hasattr(self, 'user_group_name'):
             await self.channel_layer.group_discard(self.user_group_name, self.channel_name)
+            
+        if hasattr(self, 'presence_groups') and self.user:
+            for group_name in self.presence_groups:
+                await self.channel_layer.group_send(
+                    group_name,
+                    {
+                        "type": "presence_broadcast",
+                        "user_id": self.user.id,
+                        "status": "offline"
+                    }
+                )
+                await self.channel_layer.group_discard(group_name, self.channel_name)
 
     async def receive(self, text_data):
         """Central demultiplexing hub processing incoming communication frames."""
@@ -80,6 +92,26 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
                     await self.channel_layer.group_add(self.current_channel_group, self.channel_name)
             elif action == "ping":
                 await self.send(text_data=json.dumps({"stream": "system", "payload": {"type": "pong"}}))
+            elif action == "presence_heartbeat":
+                workspace_slug = payload.get("workspace_slug")
+                if workspace_slug and self.user:
+                    group_name = f"presence_{workspace_slug}"
+                    if not hasattr(self, 'presence_groups'):
+                        self.presence_groups = set()
+                    
+                    if group_name not in self.presence_groups:
+                        await self.channel_layer.group_add(group_name, self.channel_name)
+                        self.presence_groups.add(group_name)
+
+                    # Broadcast online status
+                    await self.channel_layer.group_send(
+                        group_name,
+                        {
+                            "type": "presence_broadcast",
+                            "user_id": self.user.id,
+                            "status": "online"
+                        }
+                    )
             return
 
         # Security perimeter check
@@ -190,6 +222,25 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             "stream": "calls",
             "payload": payload
+        }))
+
+    async def user_signal(self, event):
+        payload = event.get("signal_data", {})
+        payload["sender_id"] = event.get("sender_id")
+        stream = event.get("stream", "system")
+        await self.send(text_data=json.dumps({
+            "stream": stream,
+            "payload": payload
+        }))
+
+    async def presence_broadcast(self, event):
+        await self.send(text_data=json.dumps({
+            "stream": "system",
+            "payload": {
+                "type": "presence_update",
+                "user_id": event["user_id"],
+                "status": event["status"]
+            }
         }))
 
     # --- Asynchronous Thread Boundary Isolation Methods ---

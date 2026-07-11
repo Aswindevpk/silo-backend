@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     WorkspaceListCreateView,
+    WorkspaceMembersListView,
     WorkspaceInviteView,
     WorkspaceAcceptInviteView,
     ToggleAutopayView,
@@ -10,6 +11,7 @@ from .views import (
 
 urlpatterns = [
     path('', WorkspaceListCreateView.as_view(), name='workspace-list-create'),
+    path('<slug:slug>/members/', WorkspaceMembersListView.as_view(), name='workspace-members'),
     path('<slug:slug>/invite/', WorkspaceInviteView.as_view(), name='workspace-invite'),
     path('accept-invite/', WorkspaceAcceptInviteView.as_view(), name='workspace-accept-invite'),
     path('<slug:slug>/toggle-autopay/', ToggleAutopayView.as_view(), name='workspace-toggle-autopay'),

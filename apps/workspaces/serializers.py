@@ -12,12 +12,17 @@ class WorkspaceSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'slug', 'created_at', 'created_by_email']
         read_only_fields = ['id', 'created_at']
 
+class NestedUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email']
+
 class WorkspaceMemberSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user = NestedUserSerializer(read_only=True)
 
     class Meta:
         model = WorkspaceMember
-        fields = ['id', 'user_email', 'role', 'joined_at']
+        fields = ['id', 'user', 'role', 'joined_at']
         read_only_fields = ['id', 'joined_at']
 
 class WorkspaceInvitationSerializer(serializers.ModelSerializer):

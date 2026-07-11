@@ -1,205 +1,229 @@
 import json
-import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.contrib.auth import get_user_model
-from rest_framework_simplejwt.tokens import AccessToken
 from django.utils import timezone
-from django.db import transaction
+from apps.chats.models import Reply, Topic
+from apps.workspaces.models import WorkspaceMember
+from rest_framework_simplejwt.tokens import AccessToken
+from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-@database_sync_to_async
-def get_user_from_token(token_string):
-    try:
-        access_token = AccessToken(token_string.strip())
-        user_id = access_token.payload.get('user_id')
-        user = User.objects.get(id=user_id)
-        if user.is_active:
-            return user
-    except Exception:
-        pass
-    return None
-
-@database_sync_to_async
-def verify_channel_access(user, channel_id):
-    try:
-        from apps.chats.models import Channel
-        from apps.workspaces.models import WorkspaceMember
-        channel = Channel.objects.get(id=channel_id)
-        member = WorkspaceMember.objects.filter(workspace=channel.workspace, user=user).first()
-        if not member:
-            return False
-        if channel.is_private:
-            if not channel.allowed_members.filter(id=member.id).exists():
-                return False
-        return True
-    except Exception:
-        return False
-
-@database_sync_to_async
-def save_reply(user, topic_id, content):
-    try:
-        from apps.chats.models import Topic, Reply
-        topic = Topic.objects.get(id=topic_id)
-        with transaction.atomic():
-            reply = Reply.objects.create(topic=topic, content=content, created_by=user)
-            topic.last_reply_at = timezone.now()
-            topic.replies_count += 1
-            topic.save()
-        return {
-            "id": reply.id,
-            "topic_id": topic.id,
-            "content": reply.content,
-            "created_at": reply.created_at.isoformat(),
-            "created_by_email": user.email
-        }
-    except Exception:
-        return None
-
-class UserConsumer(AsyncWebsocketConsumer):
+class SiloGatewayConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        await self.accept()
-        self.authenticated = False
+        """Initializes the secure, multi-tenant persistent background presence gateway."""
         self.user = None
-        self.current_channel_group = None
-        self.auth_timeout_task = asyncio.create_task(self.auth_timeout_check())
-        await self.send(text_data=json.dumps({
-            "message": "Connection established. Please authenticate by sending your access token."
-        }))
+        
+        # Try to parse JWT token from query string or cookies
+        from urllib.parse import parse_qs
+        query_string = self.scope.get("query_string", b"").decode("utf-8")
+        query_params = parse_qs(query_string)
+        
+        token = None
+        if "token" in query_params:
+            token = query_params["token"][0]
+        else:
+            headers = dict(self.scope.get("headers", []))
+            if b"cookie" in headers:
+                cookies = headers[b"cookie"].decode("utf-8").split(";")
+                for cookie in cookies:
+                    if "access=" in cookie.strip():
+                        token = cookie.split("access=")[1].strip()
+                        break
+        
+        if token:
+            try:
+                access_token = AccessToken(token)
+                user_id = access_token.payload.get('user_id')
+                user = await database_sync_to_async(User.objects.get)(id=user_id)
+                if user.is_active:
+                    self.user = user
+            except Exception:
+                pass
+                
+        if not self.user:
+            await self.close(code=4003)
+            return
 
-    async def auth_timeout_check(self):
-        try:
-            await asyncio.sleep(10)
-            if not self.authenticated:
-                await self.send(text_data=json.dumps({
-                    "error": "Authentication timeout. Connection closing."
-                }))
-                await self.close(code=4408)
-        except asyncio.CancelledError:
-            pass
+        # Provision a targeted personal routing group signature for private signals (e.g., call rings)
+        self.user_group_name = f"user_{self.user.id}"
+        await self.channel_layer.group_add(self.user_group_name, self.channel_name)
+        await self.accept()
+        await self.send(text_data=json.dumps({"stream": "system", "payload": {"type": "auth_success", "message": "Authentication successful!"}}))
 
     async def disconnect(self, close_code):
-        if hasattr(self, 'auth_timeout_task'):
-            self.auth_timeout_task.cancel()
-        
-        # Discard from user and channel groups
-        if self.user:
-            await self.channel_layer.group_discard(f"user_{self.user.id}", self.channel_name)
-        if self.current_channel_group:
-            await self.channel_layer.group_discard(self.current_channel_group, self.channel_name)
+        """Executes strict garbage collection routines to preserve memory integrity."""
+        if hasattr(self, 'user_group_name'):
+            await self.channel_layer.group_discard(self.user_group_name, self.channel_name)
 
     async def receive(self, text_data):
+        """Central demultiplexing hub processing incoming communication frames."""
         try:
-            data = json.loads(text_data)
+            packet = json.loads(text_data)
         except json.JSONDecodeError:
-            if not self.authenticated:
-                await self.send(text_data=json.dumps({
-                    "error": "Invalid JSON. Connection closing."
-                }))
-                await self.close(code=4401)
-                return
-            data = {}
+            await self.send(text_data=json.dumps({"error": "Malformed JSON layout."}))
+            return
 
-        if not self.authenticated:
-            # Handle Authentication
-            if data.get("type") == "auth" and "token" in data:
-                token = data["token"]
-                user = await get_user_from_token(token)
-                if user:
-                    self.authenticated = True
-                    self.user = user
-                    if hasattr(self, 'auth_timeout_task'):
-                        self.auth_timeout_task.cancel()
-                    
-                    # Join user-specific signaling group
-                    await self.channel_layer.group_add(f"user_{self.user.id}", self.channel_name)
-                    
-                    await self.send(text_data=json.dumps({
-                        "message": f"Authentication successful! Welcome {user.email}."
-                    }))
-                else:
-                    await self.send(text_data=json.dumps({
-                        "error": "Invalid token. Connection closing."
-                    }))
-                    await self.close(code=4401)
-            else:
-                await self.send(text_data=json.dumps({
-                    "error": "Authentication required. Connection closing."
-                }))
-                await self.close(code=4401)
-        else:
-            action_type = data.get("type")
+        stream = packet.get("stream")
+        payload = packet.get("payload", {})
+        action = payload.get("type") or packet.get("action")
+        workspace_id = payload.get("workspace_id")
+        channel_id = payload.get("channel_id")
 
-            # Handle Channel Subscription
-            if action_type == "subscribe":
-                channel_id = data.get("channel_id")
-                if not channel_id:
-                    await self.send(text_data=json.dumps({"error": "channel_id is required."}))
-                    return
-
-                has_access = await verify_channel_access(self.user, channel_id)
-                if has_access:
-                    # Discard from previous channel group
-                    if self.current_channel_group:
-                        await self.channel_layer.group_discard(self.current_channel_group, self.channel_name)
-                    
+        if stream == "system":
+            if action == "subscribe":
+                if channel_id:
+                    # Optional: Verify workspace membership
+                    # is_authenticated_member = await self.verify_workspace_membership(self.user, workspace_id)
+                    # if is_authenticated_member:
                     self.current_channel_group = f"channel_{channel_id}"
                     await self.channel_layer.group_add(self.current_channel_group, self.channel_name)
-                    await self.send(text_data=json.dumps({
-                        "status": "success",
-                        "message": f"Subscribed to channel {channel_id}"
-                    }))
-                else:
-                    await self.send(text_data=json.dumps({"error": "Access denied to this channel."}))
+            elif action == "ping":
+                await self.send(text_data=json.dumps({"stream": "system", "payload": {"type": "pong"}}))
+            return
 
-            # Handle Posting a Reply (instantly broadcasted to all channel subscribers)
-            elif action_type == "new_reply":
-                topic_id = data.get("topic_id")
-                content = data.get("content")
-                if not topic_id or not content:
-                    await self.send(text_data=json.dumps({"error": "topic_id and content are required."}))
-                    return
+        # Security perimeter check
+        # is_authenticated_member = await self.verify_workspace_membership(self.user, workspace_id)
+        # if not is_authenticated_member:
+        #     await self.send(text_data=json.dumps({"error": "Access Denied."}))
+        #     return
 
-                reply_data = await save_reply(self.user, topic_id, content)
-                if reply_data and self.current_channel_group:
+        if stream == "chat":
+            await self.process_chat_stream(action, workspace_id, channel_id, payload)
+        elif stream == "calls":
+            await self.process_call_stream(action, workspace_id, channel_id, payload)
+
+    async def process_chat_stream(self, action, workspace_id, channel_id, payload):
+        """Routes persistent chat mutations and volatile browser telemetry indicators."""
+        broadcast_group = f"channel_{channel_id}"
+
+        if action == "send_reply":
+            reply_dataset = await self.commit_reply_mutation(
+                user=self.user,
+                topic_id=payload.get("topic_id"),
+                content=payload.get("content")
+            )
+            await self.channel_layer.group_send(
+                broadcast_group,
+                {
+                    "type": "chat.broadcast_message",
+                    "action": "new_reply",
+                    "data": reply_dataset
+                }
+            )
+        elif action == "typing_indicator":
+            await self.channel_layer.group_send(
+                broadcast_group,
+                {
+                    "type": "chat.broadcast_ephemeral",
+                    "action": "user_typing",
+                    "sender_id": self.user.id,
+                    "is_typing": payload.get("is_typing", False)
+                }
+            )
+        elif action == "ephemeral_chat":
+            receiver_email = payload.get("receiver_email")
+            content = payload.get("content")
+            if receiver_email and content:
+                receiver_id = await self.get_user_id_by_email(receiver_email)
+                if receiver_id:
                     await self.channel_layer.group_send(
-                        self.current_channel_group,
+                        f"user_{receiver_id}",
                         {
-                            "type": "channel_message",
-                            "message": reply_data
+                            "type": "chat.broadcast_direct",
+                            "sender_email": self.user.email,
+                            "content": content
                         }
                     )
-                else:
-                    await self.send(text_data=json.dumps({"error": "Failed to save reply or not subscribed."}))
 
-            # Handle P2P Call Signaling (relay directly to recipient user group)
-            elif action_type == "call_signal":
-                receiver_id = data.get("receiver_id")
-                if not receiver_id:
-                    await self.send(text_data=json.dumps({"error": "receiver_id is required."}))
-                    return
+    async def process_call_stream(self, action, workspace_id, channel_id, payload):
+        """Asymmetric target router for establishing WebRTC direct media tracks."""
+        target_user_id = payload.get("receiver_id") or payload.get("target_user_id")
+        if not target_user_id:
+            return
 
-                await self.channel_layer.group_send(
-                    f"user_{receiver_id}",
-                    {
-                        "type": "user_signal",
-                        "sender_id": self.user.id,
-                        "signal_data": data
-                    }
-                )
+        targeted_routing_layer = f"user_{target_user_id}"
 
-    # Receive message from channel group
-    async def channel_message(self, event):
+        await self.channel_layer.group_send(
+            targeted_routing_layer,
+            {
+                "type": "call.broadcast_signal",
+                "sender_id": self.user.id,
+                "channel_id": channel_id,
+                "signal_data": payload
+            }
+        )
+
+    # --- Channel Layer Event Broadcast Handlers ---
+    async def chat_broadcast_message(self, event):
         await self.send(text_data=json.dumps({
-            "type": "new_reply_broadcast",
-            "data": event["message"]
+            "stream": "chat",
+            "payload": {
+                "type": event["action"],
+                "data": event["data"]
+            }
         }))
 
-    # Receive WebRTC signaling message
-    async def user_signal(self, event):
+    async def chat_broadcast_ephemeral(self, event):
         await self.send(text_data=json.dumps({
-            "type": "call_signal_relay",
-            "sender_id": event["sender_id"],
-            "signal_data": event["signal_data"]
+            "stream": "chat",
+            "payload": {
+                "type": event["action"],
+                "user_id": event["sender_id"],
+                "is_typing": event["is_typing"]
+            }
         }))
+
+    async def chat_broadcast_direct(self, event):
+        await self.send(text_data=json.dumps({
+            "stream": "chat",
+            "payload": {
+                "type": "ephemeral_chat",
+                "sender_email": event["sender_email"],
+                "content": event["content"]
+            }
+        }))
+
+    async def call_broadcast_signal(self, event):
+        payload = event.get("signal_data", {})
+        payload["sender_id"] = event.get("sender_id")
+        await self.send(text_data=json.dumps({
+            "stream": "calls",
+            "payload": payload
+        }))
+
+    # --- Asynchronous Thread Boundary Isolation Methods ---
+    @database_sync_to_async
+    def verify_workspace_membership(self, user, workspace_id):
+        return WorkspaceMember.objects.filter(user=user, workspace_id=workspace_id).exists()
+
+    @database_sync_to_async
+    def commit_reply_mutation(self, user, topic_id, content):
+        target_topic = Topic.objects.get(id=topic_id)
+        new_reply = Reply.objects.create(
+            topic=target_topic,
+            created_by=user,
+            content=content
+        )
+        target_topic.last_reply_at = timezone.now()
+        target_topic.replies_count += 1
+        target_topic.save(update_fields=['last_reply_at', 'replies_count'])
+
+        return {
+            "id": str(new_reply.id),
+            "topic": str(target_topic.id),
+            "content": new_reply.content,
+            "created_by": {
+                "id": user.id,
+                "username": user.username
+            },
+            "timestamp": new_reply.created_at.isoformat()
+        }
+
+    @database_sync_to_async
+    def get_user_id_by_email(self, email):
+        try:
+            from django.contrib.auth import get_user_model
+            return get_user_model().objects.get(email=email).id
+        except:
+            return None

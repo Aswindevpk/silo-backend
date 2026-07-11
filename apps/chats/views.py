@@ -1,3 +1,5 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.utils import timezone
@@ -97,5 +99,23 @@ class ReplyListCreateView(APIView):
             topic.last_reply_at = timezone.now()
             topic.replies_count += 1
             topic.save()
+
+        # Broadcast the new reply to the channel's WebSocket group
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            # We must serialize the data manually or use the DRF serialized data
+            # Format expected by consumers.py:
+            # { "id", "topic_id", "content", "created_at", "created_by_email" }
+            # Wait, ReplySerializer already has the data. Let's send that!
+            message_data = serializer.data
+            
+            async_to_sync(channel_layer.group_send)(
+                f"channel_{topic.channel.id}",
+                {
+                    "type": "channel_message",
+                    "stream": "chat",
+                    "message": message_data
+                }
+            )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)

@@ -75,4 +75,5 @@ class Reply(models.Model):
         verbose_name_plural = "Replies"
 
     def __str__(self):
-        return f"Reply by {self.created_by.email} on thread '{self.topic.title[:20]}...'"
+        author = self.created_by.email if self.created_by else 'Unknown'
+        return f"Reply by {author} on thread '{self.topic.title[:20]}...'"

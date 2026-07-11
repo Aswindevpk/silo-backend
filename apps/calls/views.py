@@ -1,3 +1,5 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
@@ -46,6 +48,23 @@ class CallSessionListCreateView(APIView):
             status=CallSession.Status.RINGING
         )
         serializer = CallSessionSerializer(session)
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f"user_{receiver.id}",
+                {
+                    "type": "user_signal",
+                    "stream": "calls",
+                    "sender_id": request.user.id,
+                    "signal_data": {
+                        "type": "incoming_call",
+                        "session_id": session.id,
+                        "caller_email": request.user.email
+                    }
+                }
+            )
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class CallSessionAcceptView(APIView):
@@ -64,6 +83,22 @@ class CallSessionAcceptView(APIView):
         session.save()
 
         serializer = CallSessionSerializer(session)
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                f"user_{session.caller.id}",
+                {
+                    "type": "user_signal",
+                    "stream": "calls",
+                    "sender_id": request.user.id,
+                    "signal_data": {
+                        "type": "call_accepted",
+                        "session_id": session.id
+                    }
+                }
+            )
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class CallSessionEndView(APIView):
@@ -89,4 +124,34 @@ class CallSessionEndView(APIView):
             session.save()
 
         serializer = CallSessionSerializer(session)
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            # Notify caller
+            async_to_sync(channel_layer.group_send)(
+                f"user_{session.caller.id}",
+                {
+                    "type": "user_signal",
+                    "stream": "calls",
+                    "sender_id": request.user.id,
+                    "signal_data": {
+                        "type": "call_ended",
+                        "session_id": session.id
+                    }
+                }
+            )
+            # Notify receiver
+            async_to_sync(channel_layer.group_send)(
+                f"user_{session.receiver.id}",
+                {
+                    "type": "user_signal",
+                    "stream": "calls",
+                    "sender_id": request.user.id,
+                    "signal_data": {
+                        "type": "call_ended",
+                        "session_id": session.id
+                    }
+                }
+            )
+
         return Response(serializer.data, status=status.HTTP_200_OK)

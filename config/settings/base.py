@@ -91,7 +91,7 @@ STATIC_URL = 'static/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.users.authentication.CookieJWTAuthentication',
     ),
 }
 
@@ -103,9 +103,12 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
     'ALGORITHM': 'HS256',
+    'AUTH_COOKIE': 'access',
 }
 
+CORS_ALLOW_CREDENTIALS = True
 AUTH_USER_MODEL = "users.CustomUser"
 
 GOOGLE_OAUTH2_CLIENT_SECRET = env('GOOGLE_OAUTH2_CLIENT_SECRET', default='')
 GOOGLE_OAUTH2_CLIENT_ID= env('GOOGLE_OAUTH2_CLIENT_ID', default='')
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')

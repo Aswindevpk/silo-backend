@@ -264,14 +264,14 @@ class StandardLoginView(APIView):
             str(refresh.access_token),
             max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
             httponly=True,
-            samesite='None', secure=True
+            samesite='None' if not settings.DEBUG else 'Lax', secure=not settings.DEBUG
         )
         response.set_cookie(
             'refresh',
             str(refresh),
             max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
             httponly=True,
-            samesite='None', secure=True
+            samesite='None' if not settings.DEBUG else 'Lax', secure=not settings.DEBUG
         )
         return response
 
@@ -401,14 +401,21 @@ class GoogleCallbackView(APIView):
         username = google_name if google_name else email.split('@')[0]
 
         # 4. User Lifecycle: Create or fetch the user from database
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={
-                'username': username,
-                'is_verified': True, # Email is verified by Google
-            }
-        )
-        if created:
+        user = User.objects.filter(email=email).first()
+        
+        if user:
+            if user.has_usable_password():
+                import urllib.parse
+                frontend_url = settings.FRONTEND_URL
+                error_msg = urllib.parse.quote("This email is already associated with a standard account. Please log in using your email and password.")
+                return redirect(f"{frontend_url}/auth/google/callback?error={error_msg}")
+            
+        else:
+            user = User.objects.create(
+                email=email,
+                username=username,
+                is_verified=True,
+            )
             user.set_unusable_password()
             user.save()
 
@@ -423,9 +430,7 @@ class GoogleCallbackView(APIView):
         
         user_data = {
             'email': user.email,
-            'username': user.username,
-            'is_new': created,
-            'token': str(refresh.access_token)
+            'username': user.username
         }
         user_data_b64 = base64.urlsafe_b64encode(json.dumps(user_data).encode()).decode()
         
@@ -437,14 +442,14 @@ class GoogleCallbackView(APIView):
             str(refresh.access_token),
             max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
             httponly=True,
-            samesite='None', secure=True
+            samesite='None' if not settings.DEBUG else 'Lax', secure=not settings.DEBUG
         )
         response.set_cookie(
             'refresh',
             str(refresh),
             max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
             httponly=True,
-            samesite='None', secure=True
+            samesite='None' if not settings.DEBUG else 'Lax', secure=not settings.DEBUG
         )
         return response
 
@@ -470,7 +475,7 @@ class CookieTokenRefreshView(TokenRefreshView):
                     access_token,
                     max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
                     httponly=True,
-                    samesite='None', secure=True
+                    samesite='Lax', secure=not settings.DEBUG
                 )
             # Remove tokens from JSON response
             if 'access' in response.data:

@@ -103,3 +103,19 @@ LOGGING = {
         },
     },
 }
+
+# Production Redis URL structure: redis://:password@host:port/db_number
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+            # Production connection tuning
+            "symmetric_encryption_keys": [os.getenv("SECRET_KEY")],
+            "capacity": 1500,  # Max messages per channel before dropping
+            "expiry": 60,      # Seconds a message lives in a channel
+        },
+    },
+}

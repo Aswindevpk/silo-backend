@@ -71,6 +71,7 @@ SPECTACULAR_SETTINGS = {
 # Set exact origins to allow credentials (cookies) in dev
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
+    "http://192.168.1.2:5173",
     "http://localhost:3000",
 ]
 

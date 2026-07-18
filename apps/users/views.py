@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .serializers import RegisterSerializer, ResendVerificationEmailSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, LoginSerializer, GoogleLoginSerializer
 from rest_framework import status
+from utils.exceptions import CustomAPIException
+
 
 
 class RegisterAPIView(APIView):
@@ -18,7 +20,13 @@ class RegisterAPIView(APIView):
         EmailManager.send_verification_email(user)
         return Response(
             {
-                "detail": "Registration successful. Please check your email to verify your account."
+                "message": "Registration successful. Please check your email to verify your account.",
+                "data": {
+                    "user": {
+                        "username": user.username,
+                        "email": user.email,
+                    }
+                }
             },
             status=status.HTTP_201_CREATED,
         )
@@ -31,25 +39,24 @@ class VerifyEmailAPIView(APIView):
     def get(self, request):
         token = request.query_params.get('token')
         if not token:
-            return Response(
-                {
-                    "detail": "Token is required"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise CustomAPIException(
+                message="Token is required",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         from .models import EmailVerificationToken
         token_obj = EmailVerificationToken.objects.filter(token=token).first()
         if not token_obj:
-            return Response(
-                {
-                    "detail": "Invalid token"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise CustomAPIException(
+                message="Invalid token",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
         
         if token_obj.is_expired():
             token_obj.delete()
-            return Response({'detail': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
+            raise CustomAPIException(
+                message="Invalid or expired token.",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         user = token_obj.user
         user.is_verified = True
@@ -57,7 +64,8 @@ class VerifyEmailAPIView(APIView):
         token_obj.delete()
         return Response(
             {
-                "detail": "Email verified successfully"
+                "message": "Email verified successfully",
+                "data": {}
             },
             status=status.HTTP_200_OK,
         )
@@ -73,18 +81,31 @@ class ResendVerificationEmailAPIView(APIView):
         email = serializer.validated_data['email']
         user = CustomUser.objects.get(email=email)
         if user.is_verified:
-            return Response(
-                {
-                    "detail": "Email is already verified"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise CustomAPIException(
+                message="Email is already verified",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
-            
+        
+        from django.utils import timezone as tz
+        from datetime import timedelta
+        
+        if hasattr(user, 'email_verification_token'):
+            existing = user.email_verification_token
+            if not existing.is_expired():
+                cooldown_until = existing.created_at + timedelta(minutes=2)
+                if tz.now() < cooldown_until:
+                    seconds_left = int((cooldown_until - tz.now()).total_seconds())
+                    raise CustomAPIException(
+                        message=f"Please wait {seconds_left} seconds before requesting another email.",
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
+            existing.delete()
+        
         from infra.email import EmailManager
         EmailManager.send_verification_email(user)
         return Response(
             {
-                "detail": "Verification email sent successfully"
+                "message": "Verification email sent successfully",
             },
             status=status.HTTP_200_OK,
         )
@@ -98,12 +119,39 @@ class ForgotPasswordAPIView(APIView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-        user = CustomUser.objects.get(email=email)
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return Response(
+                {
+                    "message": "If an account with this email exists, a password reset link has been sent.",
+                    "data": {}
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        from django.utils import timezone as tz
+        from datetime import timedelta
+
+        if hasattr(user, 'password_reset_token'):
+            existing = user.password_reset_token
+            if not existing.is_expired():
+                cooldown_until = existing.created_at + timedelta(minutes=2)
+                if tz.now() < cooldown_until:
+                    seconds_left = int((cooldown_until - tz.now()).total_seconds())
+                    raise CustomAPIException(
+                        message=f"Please wait {seconds_left} seconds before requesting another email.",
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
+            existing.delete()
+
         from infra.email import EmailManager
         EmailManager.send_password_reset_email(user)
         return Response(
             {
-                "detail": "Password reset email sent successfully"
+                "success": True,
+                "message": "If an account with this email exists, a password reset link has been sent.",
+                "data": {}
             },
             status=status.HTTP_200_OK,
         )
@@ -122,16 +170,17 @@ class ResetPasswordAPIView(APIView):
         from .models import PasswordResetToken
         token_obj = PasswordResetToken.objects.filter(token=token).first()
         if not token_obj:
-            return Response(
-                {
-                    "detail": "Invalid token"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise CustomAPIException(
+                message="Invalid token",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
         if token_obj.is_expired():
             token_obj.delete()
-            return Response({'detail': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
+            raise CustomAPIException(
+                message="Invalid or expired token.",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         user = token_obj.user
         user.set_password(password)
@@ -140,7 +189,9 @@ class ResetPasswordAPIView(APIView):
 
         return Response(
             {
-                "detail": "Password has been reset successfully"
+                "success": True,
+                "message": "Password has been reset successfully",
+                "data": {}
             },
             status=status.HTTP_200_OK,
         )
@@ -164,33 +215,33 @@ class StandardLoginView(APIView):
         # 1. ACCCOUNT EXISTENCE CHECK
         user = CustomUser.objects.filter(email=email).first()
         if not user:
-            return Response(
-                {"detail": "Invalid credentials."},
-                status=status.HTTP_401_UNAUTHORIZED
+            raise CustomAPIException(
+                message="Invalid email or password.", 
+                status_code=status.HTTP_401_UNAUTHORIZED
             )
             
         # 2. UNUSABLE PASSWORD PROTECTION (Social-Only Accounts)
         if not user.has_usable_password():
-            return Response(
-                {
-                    "error": "social_auth_required", 
-                    "message": "This account uses Google Sign-In. Please log in with Google."
-                },
-                status=status.HTTP_400_BAD_REQUEST
+            raise CustomAPIException(
+                message="This account uses Google Sign-In. Please log in with Google.", 
+                status_code=status.HTTP_400_BAD_REQUEST
             )
 
         # 3. CREDENTIAL AUTHENTICATION
         authenticated_user = authenticate(email=email, password=password)
         if not authenticated_user:
-            return Response(
-                {"detail": "Invalid credentials."},
-                status=status.HTTP_401_UNAUTHORIZED
+            raise CustomAPIException(
+                message="Invalid email or password.", 
+                status_code=status.HTTP_401_UNAUTHORIZED
             )
 
         if not authenticated_user.is_verified:
-            return Response(
-                {"detail": "Email is not verified. Please verify your email to log in."},
-                status=status.HTTP_401_UNAUTHORIZED
+            raise CustomAPIException(
+                message="Email is not verified. Please verify your email to log in.", 
+                errors={
+                    "code": "EMAIL_NOT_VERIFIED",
+                },
+                status_code=status.HTTP_401_UNAUTHORIZED
             )
 
         # Generate tokens manually
@@ -198,9 +249,12 @@ class StandardLoginView(APIView):
 
         response = Response(
             {
-                "user": {
-                    "username": authenticated_user.username,
-                    "email": authenticated_user.email,
+                "message": "Login successful.",
+                "data": {
+                    "user": {
+                        "username": authenticated_user.username,
+                        "email": authenticated_user.email,
+                    }
                 }
             },
             status=status.HTTP_200_OK,
@@ -292,7 +346,11 @@ class GoogleCallbackView(APIView):
         
         code = request.GET.get('code')
         if not code:
-            return Response({"error": "Authorization code is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "success": False,
+                "message": "Authorization code is required",
+                "data": {}
+            }, status=status.HTTP_400_BAD_REQUEST)
             
         redirect_uri = request.session.get('oauth_redirect_uri', request.build_absolute_uri(reverse('google-callback')))
 
@@ -310,7 +368,11 @@ class GoogleCallbackView(APIView):
         token_data = token_response.json()
 
         if 'error' in token_data:
-            return Response({"error": "Failed to exchange code with Google", "details": token_data}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "success": False,
+                "message": "Failed to exchange code with Google",
+                "data": {"details": token_data}
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         access_token = token_data.get('access_token')
 
@@ -320,11 +382,19 @@ class GoogleCallbackView(APIView):
         user_info = user_info_response.json()
 
         if 'error' in user_info:
-            return Response({"error": "Failed to fetch user info from Google"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "success": False,
+                "message": "Failed to fetch user info from Google",
+                "data": {}
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         email = user_info.get('email')
         if not email:
-            return Response({"error": "Email not provided by Google account"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "success": False,
+                "message": "Email not provided by Google account",
+                "data": {}
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Build username from Google name or email prefix
         google_name = user_info.get('name')
@@ -354,7 +424,8 @@ class GoogleCallbackView(APIView):
         user_data = {
             'email': user.email,
             'username': user.username,
-            'is_new': created
+            'is_new': created,
+            'token': str(refresh.access_token)
         }
         user_data_b64 = base64.urlsafe_b64encode(json.dumps(user_data).encode()).decode()
         
@@ -383,8 +454,11 @@ class CookieTokenRefreshView(TokenRefreshView):
     def post(self, request, *args, **kwargs):
         refresh_token = request.COOKIES.get('refresh')
         if not refresh_token:
-            return Response({"detail": "No refresh token provided."}, status=status.HTTP_401_UNAUTHORIZED)
-            
+            return Response({
+                "success": False,
+                "message": "No refresh token provided.",
+                "data": {}
+            }, status=status.HTTP_401_UNAUTHORIZED)
         request.data['refresh'] = refresh_token
         response = super().post(request, *args, **kwargs)
         
@@ -403,6 +477,18 @@ class CookieTokenRefreshView(TokenRefreshView):
                 del response.data['access']
             if 'refresh' in response.data:
                 del response.data['refresh']
+            
+            response.data = {
+                "message": "Token refreshed successfully.",
+                "data": response.data
+            }
+        else:
+            message = response.data.get("detail", "Token refresh failed.") if isinstance(response.data, dict) else "Token refresh failed."
+            response.data = {
+                "success": False,
+                "message": message,
+                "data": response.data
+            }
                 
         return response
 
@@ -411,7 +497,26 @@ class LogoutAPIView(APIView):
     permission_classes = []
 
     def post(self, request):
-        response = Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK)
-        response.delete_cookie('access', samesite='None')
-        response.delete_cookie('refresh', samesite='None')
+        from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+        response = Response({
+            "message": "Successfully logged out.",
+            "data": {}
+        }, status=status.HTTP_200_OK)
+
+        # 1. Grab the refresh token from the incoming cookie
+        refresh_token = request.COOKIES.get('refresh')
+        
+        if refresh_token:
+            try:
+                # 2. Blacklist it in the database so it can never generate new access tokens
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except TokenError:
+                # Token is already invalid/expired, skip safely
+                pass
+
+        # 3. Wipe the client-side cookies (make sure path/domain match your login settings)
+        response.delete_cookie('access', samesite='None', path='/')
+        response.delete_cookie('refresh', samesite='None', path='/')
+        
         return response

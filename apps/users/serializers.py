@@ -1,5 +1,10 @@
+import re
 from rest_framework import serializers
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import CustomUser
+from rest_framework import status
+from utils.exceptions import CustomAPIException
 
 class RegisterSerializer(serializers.Serializer):
     """Serializer for user registration"""
@@ -8,11 +13,40 @@ class RegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        """Validate that the username and email are unique"""
-        if CustomUser.objects.filter(username=attrs['username']).exists():
-            raise serializers.ValidationError("Username already exists")
-        if CustomUser.objects.filter(email=attrs['email']).exists():
-            raise serializers.ValidationError("Email already exists")
+        """Validate that the username and email are unique and formatted correctly"""
+        conflict_errors = {}
+        validation_errors = {}
+
+        if CustomUser.objects.filter(username=attrs.get('username')).exists():
+            conflict_errors['username'] = ["Username already exists"]
+        if CustomUser.objects.filter(email=attrs.get('email')).exists():
+            conflict_errors['email'] = ["Email already exists"]
+            
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", attrs.get('email')):
+            validation_errors['email'] = ["Invalid email address"]
+        if not re.match(r"^[a-zA-Z0-9]+$", attrs.get('username')):
+            validation_errors['username'] = ["Invalid username"]    
+        try:
+            # We construct a temporary user instance to let UserAttributeSimilarityValidator do its job if needed
+            temp_user = CustomUser(username=attrs.get('username'), email=attrs.get('email'))
+            validate_password(attrs.get('password'), user=temp_user)
+        except DjangoValidationError as e:
+            validation_errors['password'] = list(e.messages)
+        
+        if conflict_errors:
+            raise CustomAPIException(
+                message="User already exists.",
+                errors=conflict_errors,
+                status_code=status.HTTP_409_CONFLICT
+            )
+            
+        if validation_errors:
+            raise CustomAPIException(
+                message="Input validation failed.",
+                errors=validation_errors,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+            
         return attrs
     
     def create(self, validated_data):
@@ -31,7 +65,11 @@ class ResendVerificationEmailSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         if not CustomUser.objects.filter(email=value).exists():
-            raise serializers.ValidationError("User with this email does not exist.")
+            raise CustomAPIException(
+                message="User with this email does not exist.",
+                errors={"email": ["User with this email does not exist."]},
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
         return value
 
 
@@ -39,16 +77,33 @@ class ForgotPasswordSerializer(serializers.Serializer):
     """Serializer for requesting password reset"""
     email = serializers.EmailField()
 
-    def validate_email(self, value):
-        if not CustomUser.objects.filter(email=value).exists():
-            raise serializers.ValidationError("User with this email does not exist.")
-        return value
+    def is_valid(self, *, raise_exception=False):
+        valid = super().is_valid(raise_exception=False)
+        if not valid and raise_exception:
+            raise CustomAPIException(
+                message="Invalid email address.",
+                errors=self.errors,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+        return valid
+
+
 
 
 class ResetPasswordSerializer(serializers.Serializer):
     """Serializer for resetting user password"""
     token = serializers.UUIDField()
     password = serializers.CharField(write_only=True, min_length=8)
+
+    def is_valid(self, *, raise_exception=False):
+        valid = super().is_valid(raise_exception=False)
+        if not valid and raise_exception:
+            raise CustomAPIException(
+                message="Invalid token or password.",
+                errors=self.errors,
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+        return valid
 
 
 class LoginSerializer(serializers.Serializer):

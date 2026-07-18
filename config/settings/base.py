@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     # Third-Party Apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'channels',
 
@@ -93,6 +94,11 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'apps.users.authentication.CookieJWTAuthentication',
     ),
+    'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
+    'DEFAULT_RENDERER_CLASSES': (
+        'utils.renderers.CustomJSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    )
 }
 
 from datetime import timedelta
@@ -112,3 +118,4 @@ AUTH_USER_MODEL = "users.CustomUser"
 GOOGLE_OAUTH2_CLIENT_SECRET = env('GOOGLE_OAUTH2_CLIENT_SECRET', default='')
 GOOGLE_OAUTH2_CLIENT_ID= env('GOOGLE_OAUTH2_CLIENT_ID', default='')
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
+RESEND_API_KEY = env('RESEND_API_KEY', default='')

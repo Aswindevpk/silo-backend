@@ -57,12 +57,9 @@ MIDDLEWARE = [
 ] + MIDDLEWARE
 
 # DRF Spectacular Configuration
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'apps.users.authentication.CookieJWTAuthentication',
-    ),
+REST_FRAMEWORK.update({
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-}
+})
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Silo API',

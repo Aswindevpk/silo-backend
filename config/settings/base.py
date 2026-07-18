@@ -19,10 +19,15 @@ INSTALLED_APPS = [
     # Third-Party Apps
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'channels',
 
     # Local Apps
     'apps.users',
+    'apps.workspaces',
+    'apps.chats',
+    'apps.calls',
 ]
 
 MIDDLEWARE = [
@@ -53,7 +58,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
+# WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -87,8 +92,13 @@ STATIC_URL = 'static/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'apps.users.authentication.CookieJWTAuthentication',
     ),
+    'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
+    'DEFAULT_RENDERER_CLASSES': (
+        'utils.renderers.CustomJSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    )
 }
 
 from datetime import timedelta
@@ -99,9 +109,13 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': False,
     'ALGORITHM': 'HS256',
+    'AUTH_COOKIE': 'access',
 }
 
+CORS_ALLOW_CREDENTIALS = True
 AUTH_USER_MODEL = "users.CustomUser"
 
 GOOGLE_OAUTH2_CLIENT_SECRET = env('GOOGLE_OAUTH2_CLIENT_SECRET', default='')
 GOOGLE_OAUTH2_CLIENT_ID= env('GOOGLE_OAUTH2_CLIENT_ID', default='')
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
+RESEND_API_KEY = env('RESEND_API_KEY', default='')

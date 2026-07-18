@@ -57,12 +57,9 @@ MIDDLEWARE = [
 ] + MIDDLEWARE
 
 # DRF Spectacular Configuration
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
+REST_FRAMEWORK.update({
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-}
+})
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Silo API',
@@ -71,5 +68,18 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
 }
 
-# Allow all CORS origins in local development environment
-CORS_ALLOW_ALL_ORIGINS = True
+# Set exact origins to allow credentials (cookies) in dev
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://192.168.1.2:5173",
+    "http://localhost:3000",
+]
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": ["redis://127.0.0.1:6379/0"],
+        },
+    },
+}

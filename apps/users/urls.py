@@ -1,15 +1,16 @@
 from django.urls import path
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
-)
+
 from .views import (
     RegisterAPIView,
     VerifyEmailAPIView,
     ResendVerificationEmailAPIView,
     ForgotPasswordAPIView,
     ResetPasswordAPIView,
-    LoginAPIView,
+    StandardLoginView,
     GoogleLoginView,
+    GoogleCallbackView,
+    CookieTokenRefreshView,
+    LogoutAPIView,
 )
 
 urlpatterns = [
@@ -18,7 +19,9 @@ urlpatterns = [
     path('register/resend-verification-email/', ResendVerificationEmailAPIView.as_view(), name='resend-verification-email'),
     path('forgot-password/', ForgotPasswordAPIView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordAPIView.as_view(), name='reset-password'),
-    path('login/', LoginAPIView.as_view(), name='login'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
-    path('auth/google/', GoogleLoginView.as_view(), name='google-login'),
+    path('login/', StandardLoginView.as_view(), name='login'),
+    path('token/refresh/', CookieTokenRefreshView.as_view(), name='token-refresh'),
+    path('logout/', LogoutAPIView.as_view(), name='logout'),
+    path('auth/google/login', GoogleLoginView.as_view(), name='google-login'),
+    path('auth/google/callback', GoogleCallbackView.as_view(), name='google-callback'),
 ]

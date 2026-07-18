@@ -1,260 +1,661 @@
 {
-	"info": {
-		"_postman_id": "8bbdc17d-9445-42df-b74c-473d09aeb71a",
-		"name": "Silo User API Collection",
-		"description": "Postman collection to test the Silo backend authentication and user management endpoints.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "Register User",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"testuser@example.com\",\n    \"password\": \"StrongPassword123\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/register/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"register",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Verify Email",
-			"request": {
-				"method": "GET",
-				"header": [],
-				"url": {
-					"raw": "{{base_url}}/register/verify-email/?token=YOUR_VERIFICATION_TOKEN_HERE",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"register",
-						"verify-email",
-						""
-					],
-					"query": [
-						{
-							"key": "token",
-							"value": "YOUR_VERIFICATION_TOKEN_HERE"
-						}
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Resend Verification Email",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"email\": \"testuser@example.com\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/register/resend-verification-email/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"register",
-						"resend-verification-email",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Forgot Password",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"email\": \"testuser@example.com\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/forgot-password/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"forgot-password",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Reset Password",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"token\": \"YOUR_RESET_TOKEN_HERE\",\n    \"password\": \"NewPassword123\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/reset-password/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"reset-password",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Login User",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"email\": \"testuser@example.com\",\n    \"password\": \"StrongPassword123\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/login/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"login",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Refresh JWT Token",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"refresh\": \"YOUR_REFRESH_TOKEN_HERE\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/token/refresh/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"token",
-						"refresh",
-						""
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "Google Login",
-			"request": {
-				"method": "POST",
-				"header": [
-					{
-						"key": "Content-Type",
-						"value": "application/json",
-						"type": "text"
-					}
-				],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"id_token\": \"YOUR_GOOGLE_ID_TOKEN_HERE\"\n}"
-				},
-				"url": {
-					"raw": "{{base_url}}/google-login/",
-					"host": [
-						"{{base_url}}"
-					],
-					"path": [
-						"google-login",
-						""
-					]
-				}
-			},
-			"response": []
-		}
-	],
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:8000/api/users",
-			"type": "string"
-		}
-	]
+    "info": {
+        "_postman_id": "8bbdc17d-9445-42df-b74c-473d09aeb71a",
+        "name": "Silo API Collection",
+        "description": "Postman collection to test the Silo backend workspaces, chats, calls, auth and real-time WebSockets.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Users & Auth",
+            "item": [
+                {
+                    "name": "Register User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"testuser@example.com\",\n    \"password\": \"StrongPassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/register/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "register",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Verify Email",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{api_url}}/users/register/verify-email/?token=YOUR_VERIFICATION_TOKEN_HERE",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "register",
+                                "verify-email",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "token",
+                                    "value": "YOUR_VERIFICATION_TOKEN_HERE"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@example.com\",\n    \"password\": \"StrongPassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/login/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "login",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Token Refresh",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/token/refresh/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "token",
+                                "refresh",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Resend Verification Email",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@example.com\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/register/resend-verification-email/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "register",
+                                "resend-verification-email",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Forgot Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"testuser@example.com\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/forgot-password/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "forgot-password",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reset Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"token\": \"YOUR_RESET_TOKEN_HERE\",\n    \"password\": \"NewStrongPassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/reset-password/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "reset-password",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Google Login",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"access_token\": \"YOUR_GOOGLE_ACCESS_TOKEN_HERE\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/users/auth/google/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "auth",
+                                "google",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Logout",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{api_url}}/users/logout/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "logout",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Workspaces",
+            "item": [
+                {
+                    "name": "List or Create Workspace",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Acme Corp\",\n    \"slug\": \"acme\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Invite Workspace Member",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"invitee@example.com\",\n    \"role\": \"MEMBER\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/acme/invite/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                "acme",
+                                "invite",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Accept Workspace Invitation",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"token\": \"YOUR_INVITATION_UUID_TOKEN_HERE\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/accept-invite/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                "accept-invite",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Toggle Autopay Settings",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/acme/toggle-autopay/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                "acme",
+                                "toggle-autopay",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Stripe checkout session",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/acme/checkout/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                "acme",
+                                "checkout",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Stripe Webhook (Mock Upgrade)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"type\": \"customer.subscription.created\",\n    \"data\": {\n        \"object\": {\n            \"id\": \"sub_mock_1234\",\n            \"customer\": \"cus_mock_1234\",\n            \"metadata\": {\n                \"workspace_id\": \"1\"\n            }\n        }\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/workspaces/webhook/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "workspaces",
+                                "webhook",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Chats & Channels",
+            "item": [
+                {
+                    "name": "List or Create Channels",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"engineering\",\n    \"description\": \"Engineering discussion topics\",\n    \"is_private\": false\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/chats/workspaces/acme/channels/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "chats",
+                                "workspaces",
+                                "acme",
+                                "channels",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List or Create Topics",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title\": \"Postgres connection pooling issue\",\n    \"content\": \"We need to configure database pool size to prevent leaks.\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/chats/channels/1/topics/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "chats",
+                                "channels",
+                                "1",
+                                "topics",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List or Create Replies",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content\": \"I will review the django base settings configuration file today.\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/chats/topics/1/replies/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "chats",
+                                "topics",
+                                "1",
+                                "replies",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Calls",
+            "item": [
+                {
+                    "name": "Start P2P Call Session",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"receiver_email\": \"receiver@silo.app\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{api_url}}/calls/workspaces/acme/calls/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "calls",
+                                "workspaces",
+                                "acme",
+                                "calls",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Accept Call Session",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{api_url}}/calls/1/accept/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "calls",
+                                "1",
+                                "accept",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "End Call Session",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{api_url}}/calls/1/end/",
+                            "host": [
+                                "{{api_url}}"
+                            ],
+                            "path": [
+                                "calls",
+                                "1",
+                                "end",
+                                ""
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "User WebSocket",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "description": "WebSocket endpoint for real-time channel subscriptions, threaded reply broadcasts, and WebRTC call signaling relays.\n\n### Usage flow:\n1. Connect to `ws://localhost:8000/ws/users/` (Auth is handled automatically via HttpOnly cookies)\n2. Subscribe to a workspace channel:\n   `{\n       \"type\": \"subscribe\",\n       \"channel_id\": 1\n   }`\n3. Post a real-time reply inside the channel:\n   `{\n       \"type\": \"new_reply\",\n       \"topic_id\": 1,\n       \"content\": \"Hello world!\"\n   }`\n4. Relaying WebRTC P2P Voice Call negotiation signals:\n   `{\n       \"type\": \"call_signal\",\n       \"receiver_id\": 2,\n       \"sdp\": \"OFFER\",\n       \"candidate\": {}\n   }`",
+                "url": {
+                    "raw": "ws://localhost:8000/ws/users/",
+                    "protocol": "ws",
+                    "host": [
+                        "localhost"
+                    ],
+                    "port": "8000",
+                    "path": [
+                        "ws",
+                        "users",
+                        ""
+                    ]
+                }
+            },
+            "response": []
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "api_url",
+            "value": "http://localhost:8000/api/v1",
+            "type": "string"
+        },
+        {
+            "key": "access_token",
+            "value": "YOUR_JWT_ACCESS_TOKEN_HERE",
+            "type": "string"
+        }
+    ]
 }

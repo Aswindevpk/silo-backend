@@ -8,11 +8,20 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/asgi/
 """
 
 import os
+from pathlib import Path
+import environ
+
+# Load .env file explicitly if it exists so we can grab DJANGO_SETTINGS_MODULE
+env = environ.Env()
+env_file = Path(__file__).resolve().parent.parent / '.env'
+if env_file.exists():
+    environ.Env.read_env(env_file)
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', env('DJANGO_SETTINGS_MODULE', default='config.settings.development'))
+
 from django.conf import settings
 from django.contrib.staticfiles.handlers import ASGIStaticFilesHandler
 from django.core.asgi import get_asgi_application
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
 
 # 1. Initialize Django completely FIRST
 django_asgi_app = get_asgi_application()

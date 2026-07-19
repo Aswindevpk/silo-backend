@@ -16,8 +16,8 @@ class RegisterAPIView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        from infra.email import EmailManager
-        EmailManager.send_verification_email(user)
+        from apps.users.tasks import send_verification_email_task
+        send_verification_email_task.delay(user.id)
         return Response(
             {
                 "message": "Registration successful. Please check your email to verify your account.",
@@ -101,8 +101,8 @@ class ResendVerificationEmailAPIView(APIView):
                     )
             existing.delete()
         
-        from infra.email import EmailManager
-        EmailManager.send_verification_email(user)
+        from apps.users.tasks import send_verification_email_task
+        send_verification_email_task.delay(user.id)
         return Response(
             {
                 "message": "Verification email sent successfully",
@@ -145,8 +145,8 @@ class ForgotPasswordAPIView(APIView):
                     )
             existing.delete()
 
-        from infra.email import EmailManager
-        EmailManager.send_password_reset_email(user)
+        from apps.users.tasks import send_password_reset_email_task
+        send_password_reset_email_task.delay(user.id)
         return Response(
             {
                 "success": True,

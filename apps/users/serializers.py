@@ -1,4 +1,6 @@
 import re
+import dns.resolver
+from disposable_email_domains import blocklist
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -22,9 +24,24 @@ class RegisterSerializer(serializers.Serializer):
         if CustomUser.objects.filter(email=attrs.get('email')).exists():
             conflict_errors['email'] = ["Email already exists"]
             
-        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", attrs.get('email')):
+        email = attrs.get('email', '')
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
             validation_errors['email'] = ["Invalid email address"]
-        if not re.match(r"^[a-zA-Z0-9]+$", attrs.get('username')):
+        else:
+            domain = email.split('@')[-1].lower()
+            if domain in blocklist:
+                if 'email' not in validation_errors:
+                    validation_errors['email'] = []
+                validation_errors['email'].append("Disposable or temporary emails are strictly prohibited.")
+            else:
+                try:
+                    dns.resolver.resolve(domain, 'MX')
+                except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.Timeout):
+                    if 'email' not in validation_errors:
+                        validation_errors['email'] = []
+                    validation_errors['email'].append("This email domain does not exist or cannot receive mail.")
+                
+        if not re.match(r"^[a-zA-Z0-9]+$", attrs.get('username', '')):
             validation_errors['username'] = ["Invalid username"]    
         try:
             # We construct a temporary user instance to let UserAttributeSimilarityValidator do its job if needed

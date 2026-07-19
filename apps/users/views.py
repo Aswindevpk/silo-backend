@@ -227,6 +227,19 @@ class StandardLoginView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # 2.5 ACTIVE STATUS CHECK
+        if not user.is_active:
+            if user.check_password(password):
+                raise CustomAPIException(
+                    message="Your account has been deactivated (this may be due to email delivery failures). Please contact support.", 
+                    status_code=status.HTTP_403_FORBIDDEN
+                )
+            else:
+                raise CustomAPIException(
+                    message="Invalid email or password.", 
+                    status_code=status.HTTP_401_UNAUTHORIZED
+                )
+
         # 3. CREDENTIAL AUTHENTICATION
         authenticated_user = authenticate(email=email, password=password)
         if not authenticated_user:
@@ -525,3 +538,57 @@ class LogoutAPIView(APIView):
         response.delete_cookie('refresh', samesite='None', path='/')
         
         return response
+
+import logging
+from svix.webhooks import Webhook, WebhookVerificationError
+
+logger = logging.getLogger(__name__)
+
+class ResendWebhookView(APIView):
+    """
+    Handles incoming webhook events from Resend securely via Svix signatures.
+    """
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request, *args, **kwargs):
+        payload = request.body
+        headers = request.headers
+        
+        # Get the secret
+        secret = getattr(settings, 'RESEND_WEBHOOK_SECRET', '')
+        if not secret:
+            logger.error("RESEND_WEBHOOK_SECRET is not configured.")
+            return Response({"error": "Configuration error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        wh = Webhook(secret)
+        
+        try:
+            event = wh.verify(payload, headers)
+        except WebhookVerificationError as e:
+            logger.warning(f"Webhook signature verification failed: {str(e)}")
+            return Response({"error": "Invalid signature"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        event_type = event.get('type')
+        data = event.get('data', {})
+        
+        if event_type == 'email.bounced':
+            bounce_data = data.get('bounce', {})
+            if bounce_data.get('type') == 'Permanent':
+                to_emails = data.get('to', [])
+                if to_emails:
+                    target_email = to_emails[0]
+                    # Update database directly
+                    updated_count = CustomUser.objects.filter(email=target_email).update(is_active=False)
+                    if updated_count:
+                        logger.info(f"Deactivated user {target_email} due to permanent bounce.")
+                    else:
+                        logger.info(f"Permanent bounce received for {target_email} but no user found.")
+
+        elif event_type == 'email.delivery_delayed':
+            to_emails = data.get('to', [])
+            target_email = to_emails[0] if to_emails else 'Unknown'
+            logger.warning(f"Email delivery delayed for {target_email}. Payload: {data}")
+            
+        # Always return 200 for verified requests to prevent infinite retries
+        return Response({"status": "success"}, status=status.HTTP_200_OK)

@@ -119,3 +119,5 @@ GOOGLE_OAUTH2_CLIENT_SECRET = env('GOOGLE_OAUTH2_CLIENT_SECRET', default='')
 GOOGLE_OAUTH2_CLIENT_ID= env('GOOGLE_OAUTH2_CLIENT_ID', default='')
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 RESEND_API_KEY = env('RESEND_API_KEY', default='')
+
+RESEND_WEBHOOK_SECRET = env("RESEND_WEBHOOK_SECRET", default="whsec_testsecret")

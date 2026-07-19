@@ -11,6 +11,7 @@ from .views import (
     GoogleCallbackView,
     CookieTokenRefreshView,
     LogoutAPIView,
+    ResendWebhookView,
 )
 
 urlpatterns = [
@@ -24,4 +25,5 @@ urlpatterns = [
     path('logout/', LogoutAPIView.as_view(), name='logout'),
     path('auth/google/login', GoogleLoginView.as_view(), name='google-login'),
     path('auth/google/callback', GoogleCallbackView.as_view(), name='google-callback'),
+    path('webhooks/resend/', ResendWebhookView.as_view(), name='resend-webhook'),
 ]

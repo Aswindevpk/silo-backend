@@ -121,3 +121,13 @@ FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 RESEND_API_KEY = env('RESEND_API_KEY', default='')
 
 RESEND_WEBHOOK_SECRET = env("RESEND_WEBHOOK_SECRET", default="whsec_testsecret")
+
+# Celery Configuration
+CELERY_BROKER_URL = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
+CELERY_RESULT_BACKEND = env('REDIS_URL', default='redis://127.0.0.1:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True

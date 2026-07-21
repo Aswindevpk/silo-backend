@@ -13,19 +13,37 @@ class ChannelSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 class TopicSerializer(serializers.ModelSerializer):
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
+    created_by = serializers.SerializerMethodField()
     replies_count = serializers.IntegerField(read_only=True)
     last_reply_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Topic
-        fields = ['id', 'title', 'content', 'status', 'last_reply_at', 'replies_count', 'created_at', 'created_by_email']
+        fields = ['id', 'title', 'content', 'status', 'last_reply_at', 'replies_count', 'created_at', 'created_by']
         read_only_fields = ['id', 'created_at', 'last_reply_at', 'replies_count']
 
+    def get_created_by(self, obj):
+        if obj.created_by:
+            return {
+                "id": obj.created_by.id,
+                "username": getattr(obj.created_by, 'username', ''),
+                "email": getattr(obj.created_by, 'email', '')
+            }
+        return None
+
 class ReplySerializer(serializers.ModelSerializer):
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
+    created_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Reply
-        fields = ['id', 'content', 'created_at', 'created_by_email']
+        fields = ['id', 'content', 'created_at', 'created_by']
         read_only_fields = ['id', 'created_at']
+
+    def get_created_by(self, obj):
+        if obj.created_by:
+            return {
+                "id": obj.created_by.id,
+                "username": getattr(obj.created_by, 'username', ''),
+                "email": getattr(obj.created_by, 'email', '')
+            }
+        return None

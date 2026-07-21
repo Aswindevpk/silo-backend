@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from apps.users.models import CustomUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from .serializers import RegisterSerializer, ResendVerificationEmailSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, LoginSerializer, GoogleLoginSerializer
 from rest_framework import status
 from utils.exceptions import CustomAPIException
@@ -592,3 +593,17 @@ class ResendWebhookView(APIView):
             
         # Always return 200 for verified requests to prevent infinite retries
         return Response({"status": "success"}, status=status.HTTP_200_OK)
+
+class PresenceAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .consumers import redis_client, PRESENCE_KEY
+        online_users = list(redis_client.smembers(PRESENCE_KEY))
+        # Convert to integers
+        online_users = [int(uid) for uid in online_users if uid.isdigit()]
+        return Response({
+            "success": True,
+            "message": "Fetched online users.",
+            "data": online_users
+        }, status=status.HTTP_200_OK)

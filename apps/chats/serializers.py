@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Channel, Topic, Reply
+from .models import Channel, ChannelMessage, DirectMessage
 
 User = get_user_model()
 
@@ -12,38 +12,19 @@ class ChannelSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'is_private', 'created_at', 'created_by_email']
         read_only_fields = ['id', 'created_at']
 
-class TopicSerializer(serializers.ModelSerializer):
-    created_by = serializers.SerializerMethodField()
-    replies_count = serializers.IntegerField(read_only=True)
-    last_reply_at = serializers.DateTimeField(read_only=True)
+class ChannelMessageSerializer(serializers.ModelSerializer):
+    sender_email = serializers.EmailField(source='sender.email', read_only=True)
 
     class Meta:
-        model = Topic
-        fields = ['id', 'title', 'content', 'status', 'last_reply_at', 'replies_count', 'created_at', 'created_by']
-        read_only_fields = ['id', 'created_at', 'last_reply_at', 'replies_count']
-
-    def get_created_by(self, obj):
-        if obj.created_by:
-            return {
-                "id": obj.created_by.id,
-                "username": getattr(obj.created_by, 'username', ''),
-                "email": getattr(obj.created_by, 'email', '')
-            }
-        return None
-
-class ReplySerializer(serializers.ModelSerializer):
-    created_by = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Reply
-        fields = ['id', 'content', 'created_at', 'created_by']
+        model = ChannelMessage
+        fields = ['id', 'channel', 'sender_email', 'content', 'created_at']
         read_only_fields = ['id', 'created_at']
 
-    def get_created_by(self, obj):
-        if obj.created_by:
-            return {
-                "id": obj.created_by.id,
-                "username": getattr(obj.created_by, 'username', ''),
-                "email": getattr(obj.created_by, 'email', '')
-            }
-        return None
+class DirectMessageSerializer(serializers.ModelSerializer):
+    sender_email = serializers.EmailField(source='sender.email', read_only=True)
+    receiver_email = serializers.EmailField(source='receiver.email', read_only=True)
+
+    class Meta:
+        model = DirectMessage
+        fields = ['id', 'sender_email', 'receiver_email', 'content', 'created_at']
+        read_only_fields = ['id', 'created_at']

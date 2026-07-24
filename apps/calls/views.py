@@ -12,6 +12,22 @@ from .models import CallSession
 from .serializers import CallSessionSerializer
 
 User = get_user_model()
+from .services import generate_cloudflare_turn_credentials
+
+class TurnCredentialsView(APIView):
+    """
+    Returns short-lived ICE server credentials from Cloudflare TURN service.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        credentials = generate_cloudflare_turn_credentials()
+        if not credentials:
+            return Response(
+                {"detail": "Failed to generate TURN credentials."}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        return Response(credentials, status=status.HTTP_200_OK)
 
 class CallSessionListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]

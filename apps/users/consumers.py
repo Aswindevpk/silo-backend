@@ -1,9 +1,9 @@
 import json
+import logging
 import redis
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
-from apps.chats.models import Reply, Topic
 from apps.workspaces.models import WorkspaceMember
 from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth import get_user_model
@@ -171,34 +171,57 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
         """Routes persistent chat mutations and volatile browser telemetry indicators."""
         broadcast_group = f"channel_{channel_id}"
 
-        if action == "send_reply":
-            reply_dataset = await self.commit_reply_mutation(
+        if action == "send_channel_message":
+            msg_dataset = await self.commit_channel_message(
                 user=self.user,
-                topic_id=payload.get("topic_id"),
+                channel_id=channel_id,
                 content=payload.get("content"),
             )
             await self.channel_layer.group_send(
                 broadcast_group,
                 {
                     "type": "chat.broadcast_message",
-                    "action": "new_reply",
-                    "data": reply_dataset,
+                    "action": "new_channel_message",
+                    "data": msg_dataset,
                 },
             )
         elif action == "ephemeral_chat":
             receiver_email = payload.get("receiver_email")
             content = payload.get("content")
-            if receiver_email and content:
-                receiver_id = await self.get_user_id_by_email(receiver_email)
-                if receiver_id:
+            workspace_slug = payload.get("workspace_slug")
+            
+            if receiver_email and content and workspace_slug:
+                # Synchronously commit the message
+                message_dataset = await self.commit_direct_message(
+                    sender=self.user,
+                    receiver_email=receiver_email,
+                    workspace_slug=workspace_slug,
+                    content=content,
+                )
+                
+                if message_dataset:
+                    # Broadcast to receiver
+                    receiver_id = message_dataset["receiver_id"]
                     await self.channel_layer.group_send(
                         f"user_{receiver_id}",
                         {
                             "type": "chat.broadcast_direct",
-                            "sender_email": self.user.email,
-                            "content": content,
+                            "message_data": message_dataset,
                         },
                     )
+                    
+                    # If it's a self-chat, we don't need to send it again
+                    # But if it's not, we might want to broadcast back to the sender 
+                    # so they have the official DB ID/timestamp. For now, the frontend 
+                    # will append locally and sync on refresh, or we can broadcast to sender.
+                    if receiver_id != self.user.id:
+                        await self.channel_layer.group_send(
+                            f"user_{self.user.id}",
+                            {
+                                "type": "chat.broadcast_direct",
+                                "message_data": message_dataset,
+                            },
+                        )
 
     async def process_call_stream(self, action, workspace_id, channel_id, payload):
         """Asymmetric target router for establishing WebRTC direct media tracks."""
@@ -254,8 +277,7 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
                     "stream": "chat",
                     "payload": {
                         "type": "ephemeral_chat",
-                        "sender_email": event["sender_email"],
-                        "content": event["content"],
+                        "message_data": event.get("message_data", {}),
                     },
                 }
             )
@@ -294,21 +316,19 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
         ).exists()
 
     @database_sync_to_async
-    def commit_reply_mutation(self, user, topic_id, content):
-        target_topic = Topic.objects.get(id=topic_id)
-        new_reply = Reply.objects.create(
-            topic=target_topic, created_by=user, content=content
+    def commit_channel_message(self, user, channel_id, content):
+        from apps.chats.models import Channel, ChannelMessage
+        target_channel = Channel.objects.get(id=channel_id)
+        new_msg = ChannelMessage.objects.create(
+            channel=target_channel, sender=user, content=content
         )
-        target_topic.last_reply_at = timezone.now()
-        target_topic.replies_count += 1
-        target_topic.save(update_fields=["last_reply_at", "replies_count"])
 
         return {
-            "id": str(new_reply.id),
-            "topic": str(target_topic.id),
-            "content": new_reply.content,
-            "created_by": {"id": user.id, "username": user.username},
-            "timestamp": new_reply.created_at.isoformat(),
+            "id": str(new_msg.id),
+            "channel": str(target_channel.id),
+            "content": new_msg.content,
+            "sender_email": user.email,
+            "timestamp": new_msg.created_at.isoformat(),
         }
 
     @database_sync_to_async
@@ -318,4 +338,32 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
 
             return get_user_model().objects.get(email=email).id
         except:
+            return None
+
+    @database_sync_to_async
+    def commit_direct_message(self, sender, receiver_email, workspace_slug, content):
+        try:
+            from django.contrib.auth import get_user_model
+            from apps.chats.models import DirectMessage
+            from apps.workspaces.models import Workspace
+            
+            receiver = get_user_model().objects.get(email=receiver_email)
+            workspace = Workspace.objects.get(slug=workspace_slug)
+            
+            message = DirectMessage.objects.create(
+                workspace=workspace,
+                sender=sender,
+                receiver=receiver,
+                content=content
+            )
+            
+            return {
+                "id": str(message.id),
+                "sender_email": sender.email,
+                "receiver_email": receiver.email,
+                "receiver_id": receiver.id,
+                "content": message.content,
+                "timestamp": message.created_at.isoformat(),
+            }
+        except Exception as e:
             return None

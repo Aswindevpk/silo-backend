@@ -29,51 +29,33 @@ class Channel(models.Model):
     def __str__(self):
         return f"#{self.name} in {self.workspace.name}"
 
-class Topic(models.Model):
-    class Status(models.TextChoices):
-        ACTIVE = 'ACTIVE', 'Active'
-        RESOLVED = 'RESOLVED', 'Resolved'
-        CLOSED = 'CLOSED', 'Closed'
-
-    channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='topics')
-    title = models.CharField(max_length=255)
-    content = models.TextField()
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
-    
-    # Telemetry and Sorting Caches
-    last_reply_at = models.DateTimeField(db_index=True, auto_now_add=True)
-    replies_count = models.PositiveIntegerField(default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
+class ChannelMessage(models.Model):
+    channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
-        related_name="created_topics"
+        related_name="channel_messages"
     )
-
-    class Meta:
-        ordering = ['-last_reply_at']
-
-    def __str__(self):
-        return f"{self.title} (Topic in #{self.channel.name})"
-
-class Reply(models.Model):
-    topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name='replies')
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="replies"
-    )
 
     class Meta:
-        verbose_name_plural = "Replies"
+        ordering = ['created_at']
 
     def __str__(self):
-        author = self.created_by.email if self.created_by else 'Unknown'
-        return f"Reply by {author} on thread '{self.topic.title[:20]}...'"
+        sender_email = self.sender.email if self.sender else 'Unknown'
+        return f"Message by {sender_email} in #{self.channel.name}"
+
+class DirectMessage(models.Model):
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='direct_messages')
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_direct_messages')
+    receiver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_direct_messages')
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"DM from {self.sender.email} to {self.receiver.email} in {self.workspace.name}"

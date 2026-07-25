@@ -1,23 +1,10 @@
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from django.shortcuts import get_object_or_404
-from django.db import transaction
-from django.utils import timezone
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from apps.workspaces.models import Workspace, WorkspaceMember
-from .models import Channel, ChannelMessage, DirectMessage
-from .serializers import ChannelSerializer, ChannelMessageSerializer, DirectMessageSerializer
-
-def check_channel_access(user, channel):
-    member = WorkspaceMember.objects.filter(workspace=channel.workspace, user=user).first()
-    if not member:
-        return False
-    if channel.is_private:
-        if not channel.allowed_members.filter(id=member.id).exists():
-            return False
-    return True
+from .models import Channel, Message
+from .serializers import ChannelSerializer, MessageSerializer
 
 class ChannelListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -28,13 +15,16 @@ class ChannelListCreateView(APIView):
         if not member:
             return Response({"detail": "You are not a member of this workspace."}, status=status.HTTP_403_FORBIDDEN)
 
-        channels = Channel.objects.filter(workspace=workspace)
+        channels = Channel.objects.filter(workspace=workspace).exclude(type=Channel.ChannelType.DIRECT)
         accessible_channels = []
         for ch in channels:
-            if not ch.is_private or ch.allowed_members.filter(id=member.id).exists():
+            if ch.type == Channel.ChannelType.PUBLIC:
                 accessible_channels.append(ch)
+            else:
+                if ch.memberships.filter(user=request.user).exists():
+                    accessible_channels.append(ch)
 
-        serializer = ChannelSerializer(accessible_channels, many=True)
+        serializer = ChannelSerializer(accessible_channels, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, workspace_slug):
@@ -46,45 +36,98 @@ class ChannelListCreateView(APIView):
         serializer = ChannelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         channel = serializer.save(workspace=workspace, created_by=request.user)
-
-        if channel.is_private:
-            channel.allowed_members.add(member)
+        
+        from .models import ChannelMember
+        ChannelMember.objects.create(channel=channel, user=request.user)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-class ChannelMessageListView(APIView):
+class MessageListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, channel_id):
         channel = get_object_or_404(Channel, id=channel_id)
-        if not check_channel_access(request.user, channel):
-            return Response({"detail": "Access denied to this channel."}, status=status.HTTP_403_FORBIDDEN)
-
+        
         messages = channel.messages.all().order_by('created_at')
-        serializer = ChannelMessageSerializer(messages, many=True)
+        serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 class DirectMessageListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, workspace_slug, target_email):
+    def get(self, request, workspace_slug):
         workspace = get_object_or_404(Workspace, slug=workspace_slug)
-        member = WorkspaceMember.objects.filter(workspace=workspace, user=request.user).first()
-        if not member:
+        if not WorkspaceMember.objects.filter(workspace=workspace, user=request.user).exists():
             return Response({"detail": "You are not a member of this workspace."}, status=status.HTTP_403_FORBIDDEN)
-
-        from django.contrib.auth import get_user_model
-        from django.db.models import Q
-        User = get_user_model()
+            
+        dm_channels = Channel.objects.filter(
+            workspace=workspace, 
+            type=Channel.ChannelType.DIRECT,
+            memberships__user=request.user
+        )
         
+        serializer = ChannelSerializer(dm_channels, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DirectMessageChannelView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, workspace_slug, target_email):
+        workspace = get_object_or_404(Workspace, slug=workspace_slug)
+        
+        # Verify current user is in workspace
+        if not WorkspaceMember.objects.filter(workspace=workspace, user=request.user).exists():
+            return Response({"detail": "You are not a member of this workspace."}, status=status.HTTP_403_FORBIDDEN)
+            
         target_user = get_object_or_404(User, email=target_email)
         
-        messages = DirectMessage.objects.filter(
-            workspace=workspace
-        ).filter(
-            Q(sender=request.user, receiver=target_user) | 
-            Q(sender=target_user, receiver=request.user)
-        ).order_by('created_at')
-
-        serializer = DirectMessageSerializer(messages, many=True)
+        # Verify target user is in workspace
+        if not WorkspaceMember.objects.filter(workspace=workspace, user=target_user).exists():
+            return Response({"detail": "Target user is not a member of this workspace."}, status=status.HTTP_404_NOT_FOUND)
+            
+        from django.db.models import Count, Q
+        from .models import ChannelMember
+        
+        if request.user.id == target_user.id:
+            # Self-chat needs exactly 1 member
+            dm_channels = Channel.objects.filter(
+                workspace=workspace, 
+                type=Channel.ChannelType.DIRECT
+            ).annotate(
+                member_count=Count('memberships')
+            ).filter(
+                member_count=1,
+                memberships__user=request.user
+            )
+            
+            channel = dm_channels.first()
+            if not channel:
+                channel = Channel.objects.create(workspace=workspace, type=Channel.ChannelType.DIRECT, created_by=request.user)
+                ChannelMember.objects.create(channel=channel, user=request.user)
+        else:
+            # Find existing DM channel with exactly these two users
+            dm_channels = Channel.objects.filter(
+                workspace=workspace, 
+                type=Channel.ChannelType.DIRECT
+            ).annotate(
+                member_count=Count('memberships')
+            ).filter(
+                member_count=2,
+                memberships__user=request.user
+            ).filter(
+                memberships__user=target_user
+            )
+            
+            channel = dm_channels.first()
+            if not channel:
+                channel = Channel.objects.create(workspace=workspace, type=Channel.ChannelType.DIRECT, created_by=request.user)
+                ChannelMember.objects.create(channel=channel, user=request.user)
+                ChannelMember.objects.create(channel=channel, user=target_user)
+                
+        serializer = ChannelSerializer(channel, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+

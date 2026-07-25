@@ -1,52 +1,39 @@
 import json
-import logging
-import redis
-from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.utils import timezone
-from apps.workspaces.models import WorkspaceMember
-from rest_framework_simplejwt.tokens import AccessToken
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
-from django.conf import settings
+from rest_framework_simplejwt.tokens import AccessToken
+from apps.chats.models import Message, Channel, MessageReaction
+from apps.chats.serializers import MessageSerializer
+from apps.workspaces.models import WorkspaceMember
 
 User = get_user_model()
 
-def get_redis_client():
-    try:
-        hosts = settings.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"]
-        host = hosts[0]
-        if isinstance(host, str):
-            return redis.Redis.from_url(host, decode_responses=True)
-    except:
-        pass
-    return redis.Redis(host='127.0.0.1', port=6379, decode_responses=True)
-
-redis_client = get_redis_client()
-PRESENCE_KEY = "global_online_users"
+import redis
+from django.conf import settings
+redis_client = redis.Redis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+PRESENCE_KEY = "silo_online_users"
 
 
-class SiloGatewayConsumer(AsyncWebsocketConsumer):
+class GlobalConsumer(AsyncJsonWebsocketConsumer):
+    """
+    Unified Multiplexed WebSocket Consumer handling Chat, Notifications,
+    Presence, and WebRTC Audio/Video Signaling.
+    """
+
     async def connect(self):
-        """Initializes the secure, multi-tenant persistent background presence gateway."""
-        self.user = None
+        self.user = AnonymousUser()
 
-        # Try to parse JWT token from query string or cookies
-        from urllib.parse import parse_qs
-
-        query_string = self.scope.get("query_string", b"").decode("utf-8")
-        query_params = parse_qs(query_string)
-
+        # Strictly read JWT token from cookies for security
         token = None
-        if "token" in query_params:
-            token = query_params["token"][0]
-        else:
-            headers = dict(self.scope.get("headers", []))
-            if b"cookie" in headers:
-                cookies = headers[b"cookie"].decode("utf-8").split(";")
-                for cookie in cookies:
-                    if "access=" in cookie.strip():
-                        token = cookie.split("access=")[1].strip()
-                        break
+        headers = dict(self.scope.get("headers", []))
+        if b"cookie" in headers:
+            cookies = headers[b"cookie"].decode("utf-8").split(";")
+            for cookie in cookies:
+                if "access=" in cookie.strip():
+                    token = cookie.split("access=")[1].strip()
+                    break
 
         if token:
             try:
@@ -58,312 +45,308 @@ class SiloGatewayConsumer(AsyncWebsocketConsumer):
             except Exception:
                 pass
 
-        if not self.user:
-            await self.close(code=4003)
+        if not self.user.is_authenticated:
+            await self.close(code=4001)
             return
 
-        # Provision a targeted personal routing group signature for private signals (e.g., call rings)
-        self.user_group_name = f"user_{self.user.id}"
-        await self.channel_layer.group_add(self.user_group_name, self.channel_name)
+        self.user_group = f"user_{self.user.id}"
+        await self.channel_layer.group_add(self.user_group, self.channel_name)
         await self.accept()
-        from asgiref.sync import sync_to_async
-        # Add user to global presence pool
-        await sync_to_async(redis_client.sadd)(PRESENCE_KEY, self.user.id)
-        
-        # Add to global presence broadcast group
-        self.presence_group = "presence_global"
-        await self.channel_layer.group_add(self.presence_group, self.channel_name)
 
-        # Broadcast joining to everyone else
-        await self.channel_layer.group_send(
-            self.presence_group,
+        # Broadcast online presence state
+        redis_client.sadd(PRESENCE_KEY, str(self.user.id))
+        await self.broadcast_presence("online")
+
+    async def disconnect(self, close_code):
+        if hasattr(self, "user_group"):
+            redis_client.srem(PRESENCE_KEY, str(self.user.id))
+            await self.broadcast_presence("offline")
+            await self.channel_layer.group_discard(self.user_group, self.channel_name)
+
+    async def receive_json(self, content):
+        """Multiplexing Event Router"""
+        event_type = content.get("type")
+        workspace_id = content.get("workspace_id")
+        channel_id = content.get("channel_id")
+        payload = content.get("payload", {})
+
+        # 1. Room Subscription Handlers
+        if event_type == "room.subscribe":
+            await self.channel_layer.group_add(
+                f"channel_{channel_id}", self.channel_name
+            )
+            return
+
+        elif event_type == "room.unsubscribe":
+            await self.channel_layer.group_discard(
+                f"channel_{channel_id}", self.channel_name
+            )
+            return
+
+        # 2. Messaging Handler
+        elif event_type == "chat.send_message":
+            msg_obj = await self.save_message(
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                content=payload.get("content"),
+                attachments=payload.get("attachments", []),
+                client_msg_id=payload.get("client_msg_id"),
+                mentions=payload.get("mentions", []),
+                link_previews=payload.get("link_previews", []),
+                parent_message_id=payload.get("parent_message_id"),
+            )
+
+            # Broadcast to Redis group
+            await self.channel_layer.group_send(
+                f"channel_{channel_id}",
+                {
+                    "type": "chat_message_broadcast",
+                    "workspace_id": workspace_id,
+                    "channel_id": channel_id,
+                    "payload": msg_obj,
+                },
+            )
+
+        elif event_type == "chat.message_reaction":
+            message_id = payload.get("message_id")
+            emoji = payload.get("emoji")
+            msg_obj = await self.toggle_reaction(channel_id, message_id, emoji)
+            if msg_obj:
+                await self.channel_layer.group_send(
+                    f"channel_{channel_id}",
+                    {
+                        "type": "chat_reaction_broadcast",
+                        "workspace_id": workspace_id,
+                        "channel_id": channel_id,
+                        "payload": msg_obj,
+                    },
+                )
+
+        elif event_type == "chat.message_edit":
+            message_id = payload.get("message_id")
+            content = payload.get("content")
+            msg_obj = await self.edit_message(channel_id, message_id, content)
+            if msg_obj:
+                await self.channel_layer.group_send(
+                    f"channel_{channel_id}",
+                    {
+                        "type": "chat_edit_broadcast",
+                        "workspace_id": workspace_id,
+                        "channel_id": channel_id,
+                        "payload": msg_obj,
+                    },
+                )
+
+        elif event_type == "chat.message_delete":
+            message_id = payload.get("message_id")
+            msg_obj = await self.delete_message(channel_id, message_id)
+            if msg_obj:
+                await self.channel_layer.group_send(
+                    f"channel_{channel_id}",
+                    {
+                        "type": "chat_delete_broadcast",
+                        "workspace_id": workspace_id,
+                        "channel_id": channel_id,
+                        "payload": msg_obj,
+                    },
+                )
+
+        elif event_type == "chat.message_pin":
+            message_id = payload.get("message_id")
+            msg_obj = await self.toggle_pin(channel_id, message_id)
+            if msg_obj:
+                await self.channel_layer.group_send(
+                    f"channel_{channel_id}",
+                    {
+                        "type": "chat_pin_broadcast",
+                        "workspace_id": workspace_id,
+                        "channel_id": channel_id,
+                        "payload": msg_obj,
+                    },
+                )
+
+        # 3. WebRTC Call Signaling Handler
+        elif event_type in [
+            "webrtc.call_offer",
+            "webrtc.call_answer",
+            "webrtc.ice_candidate",
+        ]:
+            await self.channel_layer.group_send(
+                f"channel_{channel_id}",
+                {
+                    "type": "webrtc_relay",
+                    "event_type": event_type,
+                    "channel_id": channel_id,
+                    "payload": payload,
+                    "sender_id": str(self.user.id),
+                },
+            )
+
+    # --- Group Broadcast Relay Functions ---
+
+    async def chat_message_broadcast(self, event):
+        """Relays chat payloads down to WebSocket clients."""
+        await self.send_json(
             {
-                "type": "presence_broadcast",
-                "action": "user_joined",
-                "user_id": self.user.id,
+                "type": "chat.message_received",
+                "workspace_id": event["workspace_id"],
+                "channel_id": event["channel_id"],
+                "payload": event["payload"],
             }
         )
 
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "stream": "system",
-                    "payload": {
-                        "type": "auth_success",
-                        "message": "Authentication successful!",
-                    },
-                }
-            )
-        )
-
-    async def disconnect(self, close_code):
-        """Teardown handler for connection closures."""
-        if self.user:
-            from asgiref.sync import sync_to_async
-            # Remove user from global presence pool
-            await sync_to_async(redis_client.srem)(PRESENCE_KEY, self.user.id)
-            
-            # Broadcast leaving to everyone else
-            if hasattr(self, "presence_group"):
-                await self.channel_layer.group_send(
-                    self.presence_group,
-                    {
-                        "type": "presence_broadcast",
-                        "action": "user_left",
-                        "user_id": self.user.id,
-                    }
-                )
-                await self.channel_layer.group_discard(self.presence_group, self.channel_name)
-
-        if hasattr(self, "current_channel_group"):
-            await self.channel_layer.group_discard(
-                self.current_channel_group, self.channel_name
-            )
-        if hasattr(self, "user_group_name"):
-            await self.channel_layer.group_discard(
-                self.user_group_name, self.channel_name
-            )
-
-    async def receive(self, text_data):
-        """Central demultiplexing hub processing incoming communication frames."""
-        try:
-            packet = json.loads(text_data)
-        except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({"error": "Malformed JSON layout."}))
-            return
-
-        stream = packet.get("stream")
-        payload = packet.get("payload", {})
-        action = payload.get("type") or packet.get("action")
-        workspace_id = payload.get("workspace_id")
-        channel_id = payload.get("channel_id")
-
-        if stream == "system":
-            if action == "subscribe":
-                if channel_id:
-                    # Optional: Verify workspace membership
-                    # is_authenticated_member = await self.verify_workspace_membership(self.user, workspace_id)
-                    # if is_authenticated_member:
-                    self.current_channel_group = f"channel_{channel_id}"
-                    await self.channel_layer.group_add(
-                        self.current_channel_group, self.channel_name
-                    )
-            elif action == "ping":
-                await self.send(
-                    text_data=json.dumps(
-                        {"stream": "system", "payload": {"type": "pong"}}
-                    )
-                )
-            return
-
-        # Security perimeter check
-        # is_authenticated_member = await self.verify_workspace_membership(self.user, workspace_id)
-        # if not is_authenticated_member:
-        #     await self.send(text_data=json.dumps({"error": "Access Denied."}))
-        #     return
-
-        if stream == "chat":
-            await self.process_chat_stream(action, workspace_id, channel_id, payload)
-        elif stream == "calls":
-            await self.process_call_stream(action, workspace_id, channel_id, payload)
-
-    async def process_chat_stream(self, action, workspace_id, channel_id, payload):
-        """Routes persistent chat mutations and volatile browser telemetry indicators."""
-        broadcast_group = f"channel_{channel_id}"
-
-        if action == "send_channel_message":
-            msg_dataset = await self.commit_channel_message(
-                user=self.user,
-                channel_id=channel_id,
-                content=payload.get("content"),
-            )
-            await self.channel_layer.group_send(
-                broadcast_group,
-                {
-                    "type": "chat.broadcast_message",
-                    "action": "new_channel_message",
-                    "data": msg_dataset,
-                },
-            )
-        elif action == "ephemeral_chat":
-            receiver_email = payload.get("receiver_email")
-            content = payload.get("content")
-            workspace_slug = payload.get("workspace_slug")
-            
-            if receiver_email and content and workspace_slug:
-                # Synchronously commit the message
-                message_dataset = await self.commit_direct_message(
-                    sender=self.user,
-                    receiver_email=receiver_email,
-                    workspace_slug=workspace_slug,
-                    content=content,
-                )
-                
-                if message_dataset:
-                    # Broadcast to receiver
-                    receiver_id = message_dataset["receiver_id"]
-                    await self.channel_layer.group_send(
-                        f"user_{receiver_id}",
-                        {
-                            "type": "chat.broadcast_direct",
-                            "message_data": message_dataset,
-                        },
-                    )
-                    
-                    # If it's a self-chat, we don't need to send it again
-                    # But if it's not, we might want to broadcast back to the sender 
-                    # so they have the official DB ID/timestamp. For now, the frontend 
-                    # will append locally and sync on refresh, or we can broadcast to sender.
-                    if receiver_id != self.user.id:
-                        await self.channel_layer.group_send(
-                            f"user_{self.user.id}",
-                            {
-                                "type": "chat.broadcast_direct",
-                                "message_data": message_dataset,
-                            },
-                        )
-
-    async def process_call_stream(self, action, workspace_id, channel_id, payload):
-        """Asymmetric target router for establishing WebRTC direct media tracks."""
-        target_user_id = payload.get("receiver_id") or payload.get("target_user_id")
-        
-        if not target_user_id and payload.get("receiver_email"):
-            target_user_id = await self.get_user_id_by_email(payload.get("receiver_email"))
-            
-        if not target_user_id:
-            return
-
-        targeted_routing_layer = f"user_{target_user_id}"
-
-        await self.channel_layer.group_send(
-            targeted_routing_layer,
+    async def chat_reaction_broadcast(self, event):
+        await self.send_json(
             {
-                "type": "call.broadcast_signal",
-                "sender_id": self.user.id,
-                "channel_id": channel_id,
-                "signal_data": payload,
-            },
+                "type": "chat.reaction_updated",
+                "workspace_id": event["workspace_id"],
+                "channel_id": event["channel_id"],
+                "payload": event["payload"],
+            }
         )
 
-    # --- Channel Layer Event Broadcast Handlers ---
-    async def chat_broadcast_message(self, event):
-        await self.send(
-            text_data=json.dumps(
+    async def chat_edit_broadcast(self, event):
+        await self.send_json(
+            {
+                "type": "chat.message_edited",
+                "workspace_id": event["workspace_id"],
+                "channel_id": event["channel_id"],
+                "payload": event["payload"],
+            }
+        )
+
+    async def chat_delete_broadcast(self, event):
+        await self.send_json(
+            {
+                "type": "chat.message_deleted",
+                "workspace_id": event["workspace_id"],
+                "channel_id": event["channel_id"],
+                "payload": event["payload"],
+            }
+        )
+
+    async def chat_pin_broadcast(self, event):
+        await self.send_json(
+            {
+                "type": "chat.message_pinned",
+                "workspace_id": event["workspace_id"],
+                "channel_id": event["channel_id"],
+                "payload": event["payload"],
+            }
+        )
+
+    async def webrtc_relay(self, event):
+        """Relays WebRTC signals to channel peers (excluding sender)."""
+        if event["sender_id"] != str(self.user.id):
+            await self.send_json(
                 {
-                    "stream": "chat",
-                    "payload": {"type": event["action"], "data": event["data"]},
+                    "type": event["event_type"],
+                    "channel_id": event["channel_id"],
+                    "payload": event["payload"],
                 }
             )
+
+    async def broadcast_presence(self, status):
+        """Notifies user groups of status updates."""
+        await self.send_json(
+            {
+                "type": "presence.status_change",
+                "payload": {"user_id": str(self.user.id), "status": status},
+            }
         )
-
-    async def chat_broadcast_ephemeral(self, event):
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "stream": "chat",
-                    "payload": {
-                        "type": event["action"],
-                        "user_id": event["sender_id"],
-                        "is_typing": event["is_typing"],
-                    },
-                }
-            )
-        )
-
-    async def chat_broadcast_direct(self, event):
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "stream": "chat",
-                    "payload": {
-                        "type": "ephemeral_chat",
-                        "message_data": event.get("message_data", {}),
-                    },
-                }
-            )
-        )
-
-    async def call_broadcast_signal(self, event):
-        payload = event.get("signal_data", {})
-        payload["sender_id"] = event.get("sender_id")
-        await self.send(text_data=json.dumps({"stream": "calls", "payload": payload}))
-
-    async def user_signal(self, event):
-        payload = event.get("signal_data", {})
-        payload["sender_id"] = event.get("sender_id")
-        stream = event.get("stream", "system")
-        await self.send(text_data=json.dumps({"stream": stream, "payload": payload}))
-
-    async def presence_broadcast(self, event):
-        await self.send(
-            text_data=json.dumps(
-                {
-                    "stream": "system",
-                    "payload": {
-                        "type": "presence_update",
-                        "action": event.get("action"),
-                        "user_id": event.get("user_id"),
-                    },
-                }
-            )
-        )
-
-    # --- Asynchronous Thread Boundary Isolation Methods ---
-    @database_sync_to_async
-    def verify_workspace_membership(self, user, workspace_id):
-        return WorkspaceMember.objects.filter(
-            user=user, workspace_id=workspace_id
-        ).exists()
 
     @database_sync_to_async
-    def commit_channel_message(self, user, channel_id, content):
-        from apps.chats.models import Channel, ChannelMessage
-        target_channel = Channel.objects.get(id=channel_id)
-        new_msg = ChannelMessage.objects.create(
-            channel=target_channel, sender=user, content=content
+    def save_message(
+        self, workspace_id, channel_id, content, attachments, client_msg_id, 
+        mentions=[], link_previews=[], parent_message_id=None
+    ):
+        msg = Message.objects.create(
+            workspace_id=workspace_id,
+            channel_id=channel_id,
+            sender=self.user,
+            content=content,
+            attachments=attachments,
+            mentions=mentions,
+            link_previews=link_previews,
+            parent_message_id=parent_message_id
         )
-
+        
+        if parent_message_id:
+            parent = Message.objects.get(id=parent_message_id)
+            parent.reply_count += 1
+            parent.latest_reply_at = msg.created_at
+            parent.save(update_fields=['reply_count', 'latest_reply_at'])
+            
         return {
-            "id": str(new_msg.id),
-            "channel": str(target_channel.id),
-            "content": new_msg.content,
-            "sender_email": user.email,
-            "timestamp": new_msg.created_at.isoformat(),
+            "id": str(msg.id),
+            "channel": channel_id,
+            "client_msg_id": client_msg_id,
+            "sender": {"id": str(self.user.id), "username": self.user.username, "email": self.user.email},
+            "content": msg.content,
+            "attachments": msg.attachments,
+            "mentions": msg.mentions,
+            "link_previews": msg.link_previews,
+            "parent_message": parent_message_id,
+            "reply_count": msg.reply_count,
+            "latest_reply_at": msg.latest_reply_at.isoformat() if msg.latest_reply_at else None,
+            "is_pinned": msg.is_pinned,
+            "is_edited": msg.is_edited,
+            "is_deleted": msg.is_deleted,
+            "reactions": [],
+            "created_at": msg.created_at.isoformat(),
         }
 
     @database_sync_to_async
-    def get_user_id_by_email(self, email):
+    def toggle_reaction(self, channel_id, message_id, emoji):
         try:
-            from django.contrib.auth import get_user_model
-
-            return get_user_model().objects.get(email=email).id
-        except:
+            message = Message.objects.get(id=message_id, channel_id=channel_id)
+            existing = MessageReaction.objects.filter(message=message, user=self.user, emoji=emoji).first()
+            if existing:
+                existing.delete()
+            else:
+                MessageReaction.objects.create(message=message, user=self.user, emoji=emoji)
+            return self._serialize_message(message)
+        except Message.DoesNotExist:
             return None
 
     @database_sync_to_async
-    def commit_direct_message(self, sender, receiver_email, workspace_slug, content):
+    def edit_message(self, channel_id, message_id, content):
         try:
-            from django.contrib.auth import get_user_model
-            from apps.chats.models import DirectMessage
-            from apps.workspaces.models import Workspace
-            
-            receiver = get_user_model().objects.get(email=receiver_email)
-            workspace = Workspace.objects.get(slug=workspace_slug)
-            
-            message = DirectMessage.objects.create(
-                workspace=workspace,
-                sender=sender,
-                receiver=receiver,
-                content=content
-            )
-            
-            return {
-                "id": str(message.id),
-                "sender_email": sender.email,
-                "receiver_email": receiver.email,
-                "receiver_id": receiver.id,
-                "content": message.content,
-                "timestamp": message.created_at.isoformat(),
-            }
-        except Exception as e:
+            msg = Message.objects.get(id=message_id, channel_id=channel_id, sender=self.user)
+            msg.content = content
+            msg.is_edited = True
+            msg.save()
+            return self._serialize_message(msg)
+        except Message.DoesNotExist:
             return None
+
+    @database_sync_to_async
+    def delete_message(self, channel_id, message_id):
+        try:
+            msg = Message.objects.get(id=message_id, channel_id=channel_id, sender=self.user)
+            msg.is_deleted = True
+            msg.content = "This message was deleted."
+            msg.attachments = []
+            msg.link_previews = []
+            msg.save()
+            return self._serialize_message(msg)
+        except Message.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def toggle_pin(self, channel_id, message_id):
+        try:
+            msg = Message.objects.get(id=message_id, channel_id=channel_id)
+            if msg.is_pinned:
+                msg.is_pinned = False
+                msg.pinned_by = None
+            else:
+                msg.is_pinned = True
+                msg.pinned_by = self.user
+            msg.save()
+            return self._serialize_message(msg)
+        except Message.DoesNotExist:
+            return None
+
+    def _serialize_message(self, msg):
+        return MessageSerializer(msg).data

@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/Users/aswin/Developer/Silo/silo-backend/.venv/lib/python3.14/site-packages/rest_framework/views.py", line 503, in dispatch
+    self.initial(request, *args, **kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aswin/Developer/Silo/silo-backend/.venv/lib/python3.14/site-packages/rest_framework/views.py", line 422, in initial
+    self.check_throttles(request)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/Users/aswin/Developer/Silo/silo-backend/.venv/lib/python3.14/site-packages/rest_framework/views.py", line 364, in check_throttles
+    for throttle in self.get_throttles():
+                    ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/aswin/Developer/Silo/silo-backend/.venv/lib/python3.14/site-packages/rest_framework/views.py", line 290, in get_throttles
+    return [throttle() for throttle in self.throttle_classes]
+            ~~~~~~~~^^
+  File "/Users/aswin/Developer/Silo/silo-backend/.venv/lib/python3.14/site-packages/rest_framework/throttling.py", line 70, in __init__
+    self.rate = self.get_rate()
+                ~~~~~~~~~~~~~^^
+  File "/Users/aswin/Developer/Silo/silo-backend/utils/throttles.py", line 5, in get_rate
+    user = getattr(self.request, 'user', None)
+                   ^^^^^^^^^^^^
+AttributeError: 'TierBasedRateThrottle' object has no attribute 'request'

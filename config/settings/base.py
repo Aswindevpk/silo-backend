@@ -98,7 +98,13 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': (
         'utils.renderers.CustomJSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
-    )
+    ),
+    # 'DEFAULT_THROTTLE_CLASSES': [
+    #     'utils.throttles.TierBasedRateThrottle'
+    # ],
+    # 'DEFAULT_THROTTLE_RATES': {
+    #     'user': '100/hour',
+    # }
 }
 
 from datetime import timedelta

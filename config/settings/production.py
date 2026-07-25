@@ -21,6 +21,10 @@ ALLOWED_HOSTS = ['silo-api.aswindev.in']
 CORS_ALLOWED_ORIGINS = [
     'https://silo.aswindev.in',
 ]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.ngrok-free\.(app|dev)$",
+]
 # If you are passing HTTP cookies or Authorization headers:
 CORS_ALLOW_CREDENTIALS = True
 

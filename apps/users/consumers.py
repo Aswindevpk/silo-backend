@@ -85,15 +85,12 @@ class GlobalConsumer(AsyncJsonWebsocketConsumer):
 
         # 2. Messaging Handler
         elif event_type == "chat.send_message":
-            msg_obj = await self.save_message(
-                workspace_id=workspace_id,
-                channel_id=channel_id,
-                content=payload.get("content"),
-                attachments=payload.get("attachments", []),
-                client_msg_id=payload.get("client_msg_id"),
-                mentions=payload.get("mentions", []),
-                link_previews=payload.get("link_previews", []),
-                parent_message_id=payload.get("parent_message_id"),
+            msg_obj = await self.create_message(
+                channel_id,
+                payload.get("content", ""),
+                payload.get("parent_id") or payload.get("parent_message_id"),
+                payload.get("attachments", []),
+                payload.get("client_msg_id")
             )
 
             # Broadcast to Redis group
@@ -256,23 +253,21 @@ class GlobalConsumer(AsyncJsonWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def save_message(
-        self, workspace_id, channel_id, content, attachments, client_msg_id, 
-        mentions=[], link_previews=[], parent_message_id=None
-    ):
+    def create_message(self, channel_id, content, parent_id=None, attachments=None, client_msg_id=None):
+        if attachments is None:
+            attachments = []
+        channel = Channel.objects.get(id=channel_id)
         msg = Message.objects.create(
-            workspace_id=workspace_id,
-            channel_id=channel_id,
+            workspace_id=channel.workspace_id,
+            channel=channel,
             sender=self.user,
             content=content,
             attachments=attachments,
-            mentions=mentions,
-            link_previews=link_previews,
-            parent_message_id=parent_message_id
+            parent_message_id=parent_id
         )
         
-        if parent_message_id:
-            parent = Message.objects.get(id=parent_message_id)
+        if parent_id:
+            parent = Message.objects.get(id=parent_id)
             parent.reply_count += 1
             parent.latest_reply_at = msg.created_at
             parent.save(update_fields=['reply_count', 'latest_reply_at'])
@@ -286,7 +281,7 @@ class GlobalConsumer(AsyncJsonWebsocketConsumer):
             "attachments": msg.attachments,
             "mentions": msg.mentions,
             "link_previews": msg.link_previews,
-            "parent_message": parent_message_id,
+            "parent_message": parent_id,
             "reply_count": msg.reply_count,
             "latest_reply_at": msg.latest_reply_at.isoformat() if msg.latest_reply_at else None,
             "is_pinned": msg.is_pinned,

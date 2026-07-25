@@ -1,4 +1,6 @@
 from django.shortcuts import get_object_or_404
+import boto3
+from django.conf import settings
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -51,6 +53,71 @@ class MessageListView(APIView):
         messages = channel.messages.all().order_by('created_at')
         serializer = MessageSerializer(messages, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+class PresignedUploadView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        filename = request.query_params.get('filename')
+        content_type = request.query_params.get('content_type')
+        
+        if not filename or not content_type:
+            return Response({'error': 'filename and content_type are required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if not settings.AWS_STORAGE_BUCKET_NAME or not settings.AWS_ACCESS_KEY_ID:
+            return Response({'error': 'S3 configuration is missing'}, status=status.HTTP_501_NOT_IMPLEMENTED)
+            
+        import uuid
+        
+        # Generate a safe, unique filename
+        ext = filename.split('.')[-1] if '.' in filename else 'bin'
+        unique_filename = f"{uuid.uuid4().hex}.{ext}"
+        object_name = f"uploads/{unique_filename}"
+        
+        try:
+            # Create S3 client
+            s3_client_args = {
+                'aws_access_key_id': settings.AWS_ACCESS_KEY_ID,
+                'aws_secret_access_key': settings.AWS_SECRET_ACCESS_KEY,
+                'region_name': settings.AWS_S3_REGION_NAME,
+            }
+            if getattr(settings, 'AWS_S3_ENDPOINT_URL', None):
+                s3_client_args['endpoint_url'] = settings.AWS_S3_ENDPOINT_URL
+                
+            s3_client = boto3.client('s3', **s3_client_args)
+            
+            # Generate the presigned URL for PUT
+            presigned_url = s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                    'Key': object_name,
+                    'ContentType': content_type
+                },
+                ExpiresIn=3600
+            )
+            
+            # Generate the read URL
+            custom_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
+            if custom_domain:
+                read_url = f"https://{custom_domain}/{object_name}"
+            elif getattr(settings, 'AWS_S3_ENDPOINT_URL', None):
+                base_url = settings.AWS_S3_ENDPOINT_URL
+                read_url = f"{base_url}/{settings.AWS_STORAGE_BUCKET_NAME}/{object_name}"
+            else:
+                region = settings.AWS_S3_REGION_NAME or 'us-east-1'
+                read_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{region}.amazonaws.com/{object_name}"
+                
+            return Response({
+                'upload_url': presigned_url,
+                'file_url': read_url,
+                'object_name': object_name,
+                'content_type': content_type,
+                'original_filename': filename
+            })
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 from django.contrib.auth import get_user_model
 User = get_user_model()

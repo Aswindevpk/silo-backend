@@ -6,21 +6,16 @@ from django.utils.decorators import method_decorator
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Workspace, WorkspaceMember, WorkspaceInvitation, WorkspaceSubscription
-from .serializers import WorkspaceSerializer, WorkspaceMemberSerializer, WorkspaceInvitationSerializer, WorkspaceSubscriptionSerializer
+from .models import Workspace, WorkspaceMember, WorkspaceInvitation, Plan
+from .serializers import WorkspaceSerializer, WorkspaceMemberSerializer, WorkspaceInvitationSerializer
 from .permissions import IsWorkspaceMember, IsWorkspaceAdminOrOwner
 
 def verify_member_limit_guard(workspace):
-    try:
-        sub = workspace.subscription
-    except WorkspaceSubscription.DoesNotExist:
-        sub = WorkspaceSubscription.objects.create(workspace=workspace, tier=WorkspaceSubscription.Tier.FREE)
-
-    if not sub.is_premium():
+    if not workspace.plan or workspace.plan.slug == 'free':
         active_member_count = workspace.memberships.count()
-        if active_member_count >= 2:
+        if active_member_count >= (workspace.plan.max_members if workspace.plan else 2):
             raise PermissionDenied(
-                "This workspace has reached the limit of 2 members allowed on the Free plan. "
+                "This workspace has reached the limit of members allowed on the Free plan. "
                 "Please upgrade your subscription to invite more members."
             )
 
@@ -35,16 +30,35 @@ class WorkspaceListCreateView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
+        # Check how many free workspaces the user has created
+        created_workspaces_count = Workspace.objects.filter(
+            owner=request.user, 
+            plan__slug='free'
+        ).count()
+
+        if created_workspaces_count >= 2:
+            return Response(
+                {"detail": "Free users can only create up to 2 workspaces. Please upgrade to create more."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         serializer = WorkspaceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        workspace = serializer.save(created_by=request.user)
+        # Fetch or create a default free plan
+        free_plan, _ = Plan.objects.get_or_create(slug='free', defaults={'name': 'Free', 'max_members': 2})
+        workspace = serializer.save(owner=request.user, plan=free_plan)
         
+        # Check if user already has a default workspace
+        has_default = WorkspaceMember.objects.filter(user=request.user, is_default=True).exists()
+
         # Creator automatically becomes the Owner
         WorkspaceMember.objects.create(
             workspace=workspace,
             user=request.user,
-            role=WorkspaceMember.Role.OWNER
+            role=WorkspaceMember.Role.OWNER,
+            is_default=not has_default
         )
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class WorkspaceMembersListView(APIView):
@@ -107,12 +121,10 @@ class ToggleAutopayView(APIView):
 
     def post(self, request, slug):
         workspace = get_object_or_404(Workspace, slug=slug)
-        sub = workspace.subscription
-        sub.auto_renew = not sub.auto_renew
-        sub.save()
+        # auto_renew is no longer on the workspace schema
         return Response({
-            "detail": "Autopay settings updated.",
-            "auto_renew": sub.auto_renew
+            "detail": "Autopay settings not supported in this schema yet.",
+            "auto_renew": True
         }, status=status.HTTP_200_OK)
 
 class CreateCheckoutSessionView(APIView):
@@ -140,24 +152,75 @@ class StripeWebhookView(APIView):
             metadata = data_obj.get('metadata', {})
             workspace_id = metadata.get('workspace_id')
             if workspace_id:
-                sub = WorkspaceSubscription.objects.filter(workspace_id=workspace_id).first()
-                if sub:
-                    sub.tier = WorkspaceSubscription.Tier.PREMIUM
-                    sub.status = WorkspaceSubscription.Status.ACTIVE
-                    sub.stripe_subscription_id = data_obj.get('id')
-                    sub.stripe_customer_id = data_obj.get('customer')
-                    sub.save()
+                workspace = Workspace.objects.filter(id=workspace_id).first()
+                if workspace:
+                    premium_plan, _ = Plan.objects.get_or_create(slug='premium', defaults={'name': 'Premium', 'price_monthly': 10})
+                    workspace.plan = premium_plan
+                    workspace.subscription_status = 'active'
+                    workspace.stripe_subscription_id = data_obj.get('id')
+                    workspace.stripe_customer_id = data_obj.get('customer')
+                    workspace.save()
                     return Response({"detail": "Subscription activated successfully."}, status=status.HTTP_200_OK)
 
         elif event_type == 'customer.subscription.deleted':
             data_obj = payload.get('data', {}).get('object', {})
             sub_id = data_obj.get('id')
             if sub_id:
-                sub = WorkspaceSubscription.objects.filter(stripe_subscription_id=sub_id).first()
-                if sub:
-                    sub.tier = WorkspaceSubscription.Tier.FREE
-                    sub.status = WorkspaceSubscription.Status.CANCELED
-                    sub.save()
+                workspace = Workspace.objects.filter(stripe_subscription_id=sub_id).first()
+                if workspace:
+                    free_plan, _ = Plan.objects.get_or_create(slug='free', defaults={'name': 'Free', 'max_members': 2})
+                    workspace.plan = free_plan
+                    workspace.subscription_status = 'canceled'
+                    workspace.save()
                     return Response({"detail": "Subscription canceled successfully."}, status=status.HTTP_200_OK)
 
         return Response({"detail": "Webhook received but no action taken."}, status=status.HTTP_200_OK)
+
+class SetDefaultWorkspaceView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceMember]
+
+    def post(self, request, slug):
+        workspace = get_object_or_404(Workspace, slug=slug)
+        # Unset all other defaults
+        WorkspaceMember.objects.filter(user=request.user).update(is_default=False)
+        # Set new default
+        member = WorkspaceMember.objects.get(workspace=workspace, user=request.user)
+        member.is_default = True
+        member.save()
+        return Response({"detail": "Default workspace updated successfully."}, status=status.HTTP_200_OK)
+
+class WorkspaceInvitationsListView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceMember]
+
+    def get(self, request, slug):
+        workspace = get_object_or_404(Workspace, slug=slug)
+        invitations = WorkspaceInvitation.objects.filter(workspace=workspace, is_accepted=False)
+        # Filter out expired in python or let them show but maybe annotate? We'll just serialize all pending.
+        serializer = WorkspaceInvitationSerializer(invitations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class DeleteWorkspaceInvitationView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceAdminOrOwner]
+
+    def delete(self, request, slug, pk):
+        workspace = get_object_or_404(Workspace, slug=slug)
+        invitation = get_object_or_404(WorkspaceInvitation, workspace=workspace, id=pk)
+        invitation.delete()
+        return Response({"detail": "Invitation revoked."}, status=status.HTTP_204_NO_CONTENT)
+
+class RemoveWorkspaceMemberView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsWorkspaceAdminOrOwner]
+
+    def delete(self, request, slug, user_id):
+        workspace = get_object_or_404(Workspace, slug=slug)
+        
+        # Don't allow removing oneself via this endpoint (or handle it with care)
+        if str(request.user.id) == str(user_id):
+            return Response({"detail": "You cannot remove yourself. Leave the workspace instead."}, status=status.HTTP_400_BAD_REQUEST)
+
+        member = get_object_or_404(WorkspaceMember, workspace=workspace, user_id=user_id)
+        if member.role == WorkspaceMember.Role.OWNER:
+            return Response({"detail": "Cannot remove the workspace owner."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        member.delete()
+        return Response({"detail": "Member removed."}, status=status.HTTP_204_NO_CONTENT)

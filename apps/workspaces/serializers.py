@@ -1,16 +1,30 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Workspace, WorkspaceMember, WorkspaceInvitation, WorkspaceSubscription
+from .models import Workspace, WorkspaceMember, WorkspaceInvitation, Plan
 
 User = get_user_model()
 
+class PlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Plan
+        fields = ['id', 'name', 'slug', 'price_monthly', 'max_members', 'max_storage_mb']
+
 class WorkspaceSerializer(serializers.ModelSerializer):
-    created_by_email = serializers.EmailField(source='created_by.email', read_only=True)
+    owner_email = serializers.EmailField(source='owner.email', read_only=True)
+    is_default = serializers.SerializerMethodField()
+    plan = PlanSerializer(read_only=True)
 
     class Meta:
         model = Workspace
-        fields = ['id', 'name', 'slug', 'created_at', 'created_by_email']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'name', 'slug', 'created_at', 'owner_email', 'is_default', 'plan', 'subscription_status']
+        read_only_fields = ['id', 'created_at', 'plan', 'subscription_status']
+
+    def get_is_default(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        member = WorkspaceMember.objects.filter(workspace=obj, user=request.user).first()
+        return member.is_default if member else False
 
 class NestedUserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -22,8 +36,8 @@ class WorkspaceMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkspaceMember
-        fields = ['id', 'user', 'role', 'joined_at']
-        read_only_fields = ['id', 'joined_at']
+        fields = ['id', 'user', 'role', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 class WorkspaceInvitationSerializer(serializers.ModelSerializer):
     invited_by_email = serializers.EmailField(source='invited_by.email', read_only=True)
@@ -47,9 +61,3 @@ class WorkspaceInvitationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A pending invitation already exists for this email.")
 
         return attrs
-
-class WorkspaceSubscriptionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = WorkspaceSubscription
-        fields = ['tier', 'status', 'auto_renew', 'current_period_end']
-        read_only_fields = ['tier', 'status', 'current_period_end']

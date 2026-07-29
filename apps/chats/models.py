@@ -1,61 +1,69 @@
 from django.db import models
 from django.conf import settings
-from apps.workspaces.models import Workspace, WorkspaceMember
+from apps.workspaces.models import Workspace, TimeStampedModel
+from django.contrib.auth import get_user_model
 
-class Channel(models.Model):
+User = get_user_model()
+
+class Channel(TimeStampedModel):
+    class ChannelType(models.TextChoices):
+        PUBLIC = 'PUBLIC', 'Public'
+        PRIVATE = 'PRIVATE', 'Private'
+        DIRECT = 'DIRECT', 'Direct Message'
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='channels')
-    name = models.CharField(max_length=100)
-    description = models.TextField(blank=True, default='')
-    is_private = models.BooleanField(default=False)
-    
-    # Private Channel allowed workspace members
-    allowed_members = models.ManyToManyField(
-        WorkspaceMember,
-        blank=True,
-        related_name='allowed_private_channels'
-    )
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="created_channels"
-    )
+    name = models.CharField(max_length=80, blank=True, null=True)
+    type = models.CharField(max_length=15, choices=ChannelType.choices, default=ChannelType.PUBLIC)
+    topic = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='created_channels')
 
     class Meta:
-        unique_together = ('workspace', 'name')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['workspace', 'name'],
+                condition=models.Q(type__in=['PUBLIC', 'PRIVATE']),
+                name='unique_public_private_channel_per_workspace'
+            )
+        ]
 
-    def __str__(self):
-        return f"#{self.name} in {self.workspace.name}"
+class ChannelMember(TimeStampedModel):
+    channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='memberships')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='channel_memberships')
+    last_read_message_id = models.IntegerField(null=True, blank=True)
 
-class ChannelMessage(models.Model):
+    class Meta:
+        unique_together = ('channel', 'user')
+
+
+class Message(TimeStampedModel):
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='messages')
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='messages')
-    sender = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="channel_messages"
-    )
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_messages')
+    content = models.TextField(blank=True, default='')
+    attachments = models.JSONField(default=list, blank=True)
+    link_previews = models.JSONField(default=list, blank=True)
+    mentions = models.JSONField(default=list, blank=True)
+    parent_message = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    reply_count = models.PositiveIntegerField(default=0)
+    latest_reply_at = models.DateTimeField(null=True, blank=True)
+    is_pinned = models.BooleanField(default=False)
+    pinned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='pinned_messages')
+    is_edited = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['channel', '-id'], name='idx_channel_msg_cursor'),
+            models.Index(fields=['parent_message', '-id'], name='idx_thread_msg_cursor'),
+            models.Index(fields=['channel', 'is_pinned'], name='idx_pinned_channel_msgs'),
+        ]
 
-    def __str__(self):
-        sender_email = self.sender.email if self.sender else 'Unknown'
-        return f"Message by {sender_email} in #{self.channel.name}"
 
-class DirectMessage(models.Model):
-    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='direct_messages')
-    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_direct_messages')
-    receiver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_direct_messages')
-    content = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
+class MessageReaction(TimeStampedModel):
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='reactions')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='message_reactions')
+    emoji = models.CharField(max_length=50)
 
     class Meta:
-        ordering = ['created_at']
-
-    def __str__(self):
-        return f"DM from {self.sender.email} to {self.receiver.email} in {self.workspace.name}"
+        unique_together = ('message', 'user', 'emoji')

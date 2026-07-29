@@ -98,7 +98,13 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': (
         'utils.renderers.CustomJSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
-    )
+    ),
+    # 'DEFAULT_THROTTLE_CLASSES': [
+    #     'utils.throttles.TierBasedRateThrottle'
+    # ],
+    # 'DEFAULT_THROTTLE_RATES': {
+    #     'user': '100/hour',
+    # }
 }
 
 from datetime import timedelta
@@ -134,3 +140,16 @@ CELERY_TASK_REJECT_ON_WORKER_LOST = True
 
 CLOUDFLARE_TURN_KEY_ID = env('CLOUDFLARE_TURN_KEY_ID', default='')
 CLOUDFLARE_TURN_API_TOKEN = env('CLOUDFLARE_TURN_API_TOKEN', default='')
+
+# AWS / S3 Configuration
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME', default='')
+AWS_S3_ENDPOINT_URL = env('AWS_S3_ENDPOINT_URL', default='')
+AWS_S3_CUSTOM_DOMAIN = env('AWS_S3_CUSTOM_DOMAIN', default='')
+
+# Cloudflare Realtime SFU Settings
+CLOUDFLARE_ACCOUNT_ID = env('CLOUDFLARE_ACCOUNT_ID', default='')
+CLOUDFLARE_SFU_APP_ID = env('CLOUDFLARE_SFU_APP_ID', default='')
+CLOUDFLARE_SFU_API_TOKEN = env('CLOUDFLARE_SFU_API_TOKEN', default='')

@@ -258,6 +258,16 @@ class StandardLoginView(APIView):
                 status_code=status.HTTP_401_UNAUTHORIZED
             )
 
+        # Ensure default workspace fallback
+        from apps.workspaces.models import WorkspaceMember
+        default_membership = WorkspaceMember.objects.filter(user=authenticated_user, is_default=True).first()
+        if not default_membership:
+            first_membership = WorkspaceMember.objects.filter(user=authenticated_user).first()
+            if first_membership:
+                first_membership.is_default = True
+                first_membership.save()
+                default_membership = first_membership
+
         # Generate tokens manually
         refresh = RefreshToken.for_user(authenticated_user)
 
@@ -268,6 +278,7 @@ class StandardLoginView(APIView):
                     "user": {
                         "username": authenticated_user.username,
                         "email": authenticated_user.email,
+                        "default_workspace_slug": default_membership.workspace.slug if default_membership else None,
                     }
                 }
             },
@@ -433,7 +444,17 @@ class GoogleCallbackView(APIView):
             user.set_unusable_password()
             user.save()
 
-        # 5. JWT Token Issuance (Production Standard)
+        # 5. Ensure default workspace fallback
+        from apps.workspaces.models import WorkspaceMember
+        default_membership = WorkspaceMember.objects.filter(user=user, is_default=True).first()
+        if not default_membership:
+            first_membership = WorkspaceMember.objects.filter(user=user).first()
+            if first_membership:
+                first_membership.is_default = True
+                first_membership.save()
+                default_membership = first_membership
+
+        # JWT Token Issuance (Production Standard)
         refresh = RefreshToken.for_user(user)
 
         # Redirect the user back to the frontend with the tokens
@@ -444,7 +465,8 @@ class GoogleCallbackView(APIView):
         
         user_data = {
             'email': user.email,
-            'username': user.username
+            'username': user.username,
+            'default_workspace_slug': default_membership.workspace.slug if default_membership else None,
         }
         user_data_b64 = base64.urlsafe_b64encode(json.dumps(user_data).encode()).decode()
         

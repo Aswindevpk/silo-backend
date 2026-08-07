@@ -195,3 +195,46 @@ class EmailManager:
         logger.info(f"Password reset token for {user.email}: {token_obj.token}")
             
         return token_obj
+
+    @staticmethod
+    def send_workspace_invitation_email(invitation):
+        """
+        Sends an email with a workspace invitation link.
+        """
+        # We assume the frontend has a route like /join-workspace/?token=...
+        invitation_link = f"{settings.FRONTEND_URL}/join-workspace/?token={invitation.token}"
+        workspace_name = invitation.workspace.name
+        invited_by_name = invitation.invited_by.username if invitation.invited_by else "Someone"
+
+        content = f"""
+            <h1>You have been invited!</h1>
+            <p>{invited_by_name} has invited you to join the <strong>{workspace_name}</strong> workspace on Silo.</p>
+            <p>Click the button below to accept the invitation and get started.</p>
+            <a href="{invitation_link}" class="btn">Join Workspace</a>
+        """
+        html_content = EmailManager.get_base_html_template(content)
+
+        resend.api_key = settings.RESEND_API_KEY
+        try:
+            resend.Emails.send({
+                "from": "Silo <noreply@silo.aswindev.in>",
+                "to": invitation.email,
+                "subject": f"You're invited to join {workspace_name} on Silo",
+                "html": html_content
+            })
+            logger.info(f"Workspace invitation email sent to {invitation.email}")
+        except Exception as e:
+            logger.error(f"Failed to send workspace invitation email to {invitation.email}: {e}")
+
+        message = (
+                f"\n"
+                f"========================================================================\n"
+                f"EMAIL SIMULATION: Workspace Invitation Email\n"
+                f"To: {invitation.email}\n"
+                f"Invited By: {invited_by_name}\n"
+                f"Workspace: {workspace_name}\n"
+                f"Invitation Link: {invitation_link}\n"
+                f"========================================================================"
+            )
+        print(message)
+        logger.info(f"Workspace invitation token for {invitation.email}: {invitation.token}")

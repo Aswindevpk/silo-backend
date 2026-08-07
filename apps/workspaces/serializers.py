@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Workspace, WorkspaceMember, WorkspaceInvitation, Plan
+from .models import Workspace, WorkspaceMember, Plan
 
 User = get_user_model()
 
@@ -33,31 +33,32 @@ class NestedUserSerializer(serializers.ModelSerializer):
 
 class WorkspaceMemberSerializer(serializers.ModelSerializer):
     user = NestedUserSerializer(read_only=True)
+    email = serializers.EmailField(read_only=True)
 
     class Meta:
         model = WorkspaceMember
-        fields = ['id', 'user', 'role', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'user', 'email', 'role', 'status', 'created_at', 'expires_at']
+        read_only_fields = ['id', 'created_at', 'expires_at']
 
 class WorkspaceInvitationSerializer(serializers.ModelSerializer):
     invited_by_email = serializers.EmailField(source='invited_by.email', read_only=True)
 
     class Meta:
-        model = WorkspaceInvitation
-        fields = ['id', 'email', 'role', 'token', 'created_at', 'expires_at', 'invited_by_email']
-        read_only_fields = ['id', 'token', 'created_at', 'expires_at']
+        model = WorkspaceMember
+        fields = ['id', 'email', 'role', 'created_at', 'expires_at','status', 'invited_by_email']
+        read_only_fields = ['id', 'created_at', 'expires_at']
 
     def validate(self, attrs):
         workspace = self.context.get('workspace')
         email = attrs.get('email')
 
         # 1. Check if user is already a member
-        if WorkspaceMember.objects.filter(workspace=workspace, user__email=email).exists():
+        if WorkspaceMember.objects.filter(workspace=workspace, user__email=email, status=WorkspaceMember.Status.ACTIVE).exists():
             raise serializers.ValidationError("User is already a member of this workspace.")
 
         # 2. Check if a pending active invitation exists
-        inv = WorkspaceInvitation.objects.filter(workspace=workspace, email=email, is_accepted=False).first()
-        if inv and not inv.is_expired():
+        inv = WorkspaceMember.objects.filter(workspace=workspace, email=email, status=WorkspaceMember.Status.PENDING).first()
+        if inv and not inv.is_expired:
             raise serializers.ValidationError("A pending invitation already exists for this email.")
 
         return attrs

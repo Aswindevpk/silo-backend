@@ -48,64 +48,76 @@ class WorkspaceMember(TimeStampedModel):
         MEMBER = 'MEMBER', 'Member'
         GUEST = 'GUEST', 'Guest'
 
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        ACTIVE = 'ACTIVE', 'Active'
+        REVOKED = 'REVOKED', 'Revoked'
+
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='memberships')
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='workspace_memberships')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='workspace_memberships', null=True, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.MEMBER)
+    
+    # Invitation fields
+    email = models.EmailField(db_index=True, null=True, blank=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    token = models.UUIDField(unique=True, editable=False, null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    invited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='sent_invitations', null=True, blank=True)
     is_default = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)
 
     class Meta:
-        unique_together = ('workspace', 'user')
         constraints = [
             models.UniqueConstraint(
                 fields=['user'],
                 condition=models.Q(is_default=True),
                 name='unique_default_workspace_per_user'
+            ),
+            models.UniqueConstraint(
+                fields=['workspace', 'email'],
+                condition=models.Q(status='PENDING'),
+                name='unique_pending_invitation_per_workspace'
+            ),
+            models.UniqueConstraint(
+                fields=['workspace', 'user'],
+                condition=models.Q(user__isnull=False),
+                name='unique_workspace_user'
             )
         ]
+        indexes = [
+            models.Index(fields=['token', 'status']),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.email:
+            self.email = self.email.lower().strip()
+        if not self.user and not self.email:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Either user or email must be provided.")
 
     def save(self, *args, **kwargs):
-        if self.is_default:
+        if not self.token and self.status == self.Status.PENDING:
+            self.token = uuid.uuid4()
+            
+        self.clean()
+        if self.is_default and self.user:
             WorkspaceMember.objects.filter(user=self.user, is_default=True).exclude(id=self.id).update(is_default=False)
         super().save(*args, **kwargs)
 
-    def __str__(self):
-        return f"{self.user.email} in {self.workspace.name} ({self.role})"
-
-class WorkspaceInvitation(TimeStampedModel):
-    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name='invitations')
-    email = models.EmailField()
-    invited_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='sent_invitations'
-    )
-    role = models.CharField(
-        max_length=20,
-        choices=WorkspaceMember.Role.choices,
-        default=WorkspaceMember.Role.MEMBER
-    )
-    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    is_accepted = models.BooleanField(default=False)
-    accepted_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='accepted_invitations'
-    )
-
-    class Meta:
-        unique_together = ('workspace', 'email')
-
-    def save(self, *args, **kwargs):
-        if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(days=7)
-        super().save(*args, **kwargs)
-
+    @property
     def is_expired(self):
+        if not self.expires_at:
+            return False
         return timezone.now() > self.expires_at
 
+    @property
+    def is_valid(self):
+        return self.status == self.Status.PENDING and not self.is_expired
+
     def __str__(self):
-        return f"Invite to {self.email} for {self.workspace.name}"
+        if self.user:
+            return f"{self.user.email} in {self.workspace.name} ({self.role})"
+        return f"Invite to {self.email} for {self.workspace.name} ({self.role})"
+
+def default_invitation_expiry():
+    return timezone.now() + timedelta(days=7)

@@ -5,7 +5,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -13,10 +14,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock /app/
 
 # Sync dependencies into /app/.venv
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --group prod
 
 # Copy remaining application code
 COPY . /app/
 
-# Install the project itself
-RUN uv sync --frozen

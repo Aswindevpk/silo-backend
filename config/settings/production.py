@@ -41,8 +41,8 @@ if env('DB_NAME'):
             'NAME': env('DB_NAME'),  
             'USER': env('DB_USER'),  
             'PASSWORD': env('DB_PASSWORD'), 
-            'HOST': env('DB_HOST', '127.0.0.1'),
-            'PORT': env('DB_PORT', '5432'),
+            'HOST': env('DB_HOST', default='127.0.0.1'),
+            'PORT': env('DB_PORT', default='5432'),
             # Performance optimization: Keeps database connections alive
             'CONN_MAX_AGE': 600, 
         }

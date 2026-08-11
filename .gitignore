@@ -8,7 +8,7 @@ staticfiles/
 /static/             # Add this if you collectstatic locally into a root folder
 
 # Environment variables & Secrets
-.env
+.env*
 .env.local
 secret_key.txt
 .secrets

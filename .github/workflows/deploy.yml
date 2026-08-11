@@ -1,8 +1,7 @@
 name: Production Deployment
 
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-push:
@@ -32,20 +31,3 @@ jobs:
           cache-from: type=registry,ref=aswindevpk/silo-web:buildcache
           cache-to: type=registry,ref=aswindevpk/silo-web:buildcache,mode=max
 
-  # deploy:
-  #   name: Deploy to VPS
-  #   needs: build-and-push
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Execute Remote SSH Commands
-  #       uses: appleboy/ssh-action@v1.0.3
-  #       with:
-  #         host: ${{ secrets.SERVER_HOST }}
-  #         username: ${{ secrets.SERVER_USER }}
-  #         key: ${{ secrets.SERVER_SSH_KEY }}
-  #         script: |
-  #           cd /var/www/silo
-  #           git pull origin main
-  #           docker compose -f docker-compose.prod.yml pull
-  #           docker compose -f docker-compose.prod.yml up -d
-  #           docker image prune -af

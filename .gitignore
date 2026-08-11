@@ -9,6 +9,7 @@ staticfiles/
 
 # Environment variables & Secrets
 .env
+.env.local
 secret_key.txt
 .secrets
 

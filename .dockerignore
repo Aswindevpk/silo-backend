@@ -1,5 +1,44 @@
-.venv
-__pycache__
-*.pyc
-db.sqlite3
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment Variables & Secrets
 .env
+.env.*
+
+# Git
+.git/
+.github/
+.gitignore
+
+# Docker config
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Django specific
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Logs
+*.log
+production_errors.log
+
+# Project Documentation
+README.md
+docs/
+postman_collection.json
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store

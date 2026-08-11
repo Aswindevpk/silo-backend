@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Workspace, WorkspaceMember, WorkspaceInvitation, Plan
+from .models import Workspace, WorkspaceMember, Plan
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
@@ -14,14 +14,7 @@ class WorkspaceAdmin(admin.ModelAdmin):
 
 @admin.register(WorkspaceMember)
 class WorkspaceMemberAdmin(admin.ModelAdmin):
-    list_display = ('id', 'workspace', 'user', 'role', 'created_at')
-    list_filter = ('role', 'workspace')
-    search_fields = ('user__email', 'workspace__name')
-    ordering = ('-created_at',)
-
-@admin.register(WorkspaceInvitation)
-class WorkspaceInvitationAdmin(admin.ModelAdmin):
-    list_display = ('id', 'workspace', 'email', 'invited_by', 'role', 'is_accepted', 'expires_at')
-    list_filter = ('is_accepted', 'workspace')
-    search_fields = ('email', 'workspace__name')
+    list_display = ('id', 'workspace', 'user', 'email', 'status', 'role', 'created_at')
+    list_filter = ('role', 'status', 'workspace')
+    search_fields = ('user__email', 'email', 'workspace__name')
     ordering = ('-created_at',)

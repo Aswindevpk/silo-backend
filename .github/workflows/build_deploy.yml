@@ -51,6 +51,15 @@ jobs:
                  -L "https://api.github.com/repos/${{ github.repository }}/contents/docker-compose.prod.yml?ref=${{ github.ref }}" \
                  -o docker-compose.yml
             
-            docker compose pull
-            docker compose up -d
+            # Fetch the deploy.sh script directly from GitHub
+            curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.v3.raw" \
+                 -L "https://api.github.com/repos/${{ github.repository }}/contents/deploy.sh?ref=${{ github.ref }}" \
+                 -o deploy.sh
+            
+            # Make the script executable and run the safe cutover deployment
+            chmod +x deploy.sh
+            ./deploy.sh
+            
+            # Clean up old images
             docker image prune -af

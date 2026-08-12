@@ -124,3 +124,7 @@ LOGGING = {
     },
 }
 
+# --- MAINTENANCE MODE ---
+INSTALLED_APPS += ['maintenance_mode']
+MIDDLEWARE += ['maintenance_mode.middleware.MaintenanceModeMiddleware']
+

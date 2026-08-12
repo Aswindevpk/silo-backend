@@ -400,6 +400,19 @@ wheels = [
 ]
 
 [[package]]
+name = "django-maintenance-mode"
+version = "0.23.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "python-fsutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/38/9e/e5dc98de3e17f19cfe7dc50641d476b441b8ef2b34000a2015c05ab76066/django_maintenance_mode-0.23.0.tar.gz", hash = "sha256:221a958a912137d0809fe75bc077a6437d2c4e4f212e4bf6a3856c484e2bba6f", size = 23676, upload-time = "2026-07-14T14:10:48.484Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b3/34/1d5a0ac802804803c29740d7707f698b46b28f9338aa3a535ef0b30dd8e5/django_maintenance_mode-0.23.0-py3-none-any.whl", hash = "sha256:a589ace5b73efa08d26ad9114394d8b0d3127a3ba50ea767820bfda6b7ca0f65", size = 19961, upload-time = "2026-07-14T14:10:47.152Z" },
+]
+
+[[package]]
 name = "django-silk"
 version = "5.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -783,6 +796,15 @@ wheels = [
 ]
 
 [[package]]
+name = "python-fsutil"
+version = "0.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5b/2c/230b2228a886e11f0009aa93404f2709df2f3b1d479abfc937b53dc37bd7/python_fsutil-0.17.0.tar.gz", hash = "sha256:80d3ec6ed79b5fc5669b791aeefd9df88eb1eb027efe57d2460175bf98f37c95", size = 31120, upload-time = "2026-07-07T10:33:20.785Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/77/4a65fa715516520f3197f5a123ff51c9501c707b4508c7f4ebfaff3d349c/python_fsutil-0.17.0-py3-none-any.whl", hash = "sha256:3c0fea88c1a3403f9614d5ec9c04be929483c386bb376d33d8965a33d71fc3f4", size = 21261, upload-time = "2026-07-07T10:33:19.494Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -973,6 +995,7 @@ dev = [
     { name = "drf-spectacular" },
 ]
 prod = [
+    { name = "django-maintenance-mode" },
     { name = "gunicorn" },
 ]
 
@@ -1006,7 +1029,10 @@ dev = [
     { name = "django-silk", specifier = ">=5.5.0" },
     { name = "drf-spectacular", specifier = ">=0.29.0" },
 ]
-prod = [{ name = "gunicorn", specifier = ">=26.0.0" }]
+prod = [
+    { name = "django-maintenance-mode", specifier = ">=0.23.0" },
+    { name = "gunicorn", specifier = ">=26.0.0" },
+]
 
 [[package]]
 name = "six"

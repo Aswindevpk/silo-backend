@@ -34,6 +34,7 @@ dev = [
     "drf-spectacular>=0.29.0",
 ]
 prod = [
+    "django-maintenance-mode>=0.23.0",
     "gunicorn>=26.0.0",
 ]
 

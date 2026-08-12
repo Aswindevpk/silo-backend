@@ -39,7 +39,8 @@ RETRY_COUNT=0
 HEALTHY=false
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}\n" $HEALTH_ENDPOINT || echo "000")
+    HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -H "Host: silo-api.aswindev.in" -H "X-Forwarded-Proto: https" $HEALTH_ENDPOINT || true)
+    HTTP_STATUS=${HTTP_STATUS:-000}
     
     if [ "$HTTP_STATUS" -eq 200 ]; then
         echo "✅ Health check passed! (HTTP 200)"

@@ -54,12 +54,12 @@ jobs:
             # Fetch the deploy.sh script directly from GitHub
             curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                  -H "Accept: application/vnd.github.v3.raw" \
-                 -L "https://api.github.com/repos/${{ github.repository }}/contents/deploy.sh?ref=${{ github.ref }}" \
-                 -o deploy.sh
+                 -L "https://api.github.com/repos/${{ github.repository }}/contents/update_app.sh?ref=${{ github.ref }}" \
+                 -o update_app.sh
             
             # Make the script executable and run the safe cutover deployment
-            chmod +x deploy.sh
-            ./deploy.sh
+            chmod +x update_app.sh
+            ./update_app.sh
             
             # Clean up old images
             docker image prune -af

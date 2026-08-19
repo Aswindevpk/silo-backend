@@ -2,24 +2,21 @@
 set -e
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAINTENANCE_FLAG="/var/www/html/silo-maintenance/.silo_maintenance"
+
 
 # Load environment variables
-if [ -f "$APP_DIR/.env.prod" ]; then
-    set -a
-    source "$APP_DIR/.env.prod"
-    set +a
-elif [ -f "$APP_DIR/.env" ]; then
+if [ -f "$APP_DIR/.env" ]; then
     set -a
     source "$APP_DIR/.env"
     set +a
 else
-    echo "❌ Error: Could not find .env.prod or .env file in $APP_DIR"
+    echo "❌ Error: Could not find .env file in $APP_DIR"
     exit 1
 fi
 
-DB_USER="${DB_USER:-silo_user}"
-DB_NAME="${DB_NAME:-silo}"
+DB_USER="${DB_USER}"
+DB_NAME="${DB_NAME}"
+MAINTENANCE_FLAG="${MAINTENANCE_FLAG}"
 
 # Ensure we clean up maintenance mode if the script fails midway
 cleanup() {
@@ -29,6 +26,7 @@ cleanup() {
 trap cleanup ERR
 
 echo "🚨 Starting Automated Disaster Recovery..."
+
 cd "$APP_DIR"
 
 echo "🔒 1. Enabling Host Nginx Emergency Maintenance Mode..."

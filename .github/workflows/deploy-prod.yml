@@ -1,10 +1,13 @@
-name: Deploy to VPS
+name: Deploy to Production
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 jobs:
   deploy:
-    name: Deploy to VPS
+    name: Deploy to Production VPS
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -16,7 +19,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "docker-compose.prod.yml,update_app.sh,restore_latest.sh"
+          source: "docker-compose.prod.yml,scripts/deploy_commit.sh,scripts/emergency_db_restore.sh"
           target: "/var/www/silo"
           overwrite: true
 
@@ -34,8 +37,8 @@ jobs:
             mv docker-compose.prod.yml docker-compose.yml
 
             # Ensure script is executable and execute
-            chmod +x update_app.sh
-            ./update_app.sh
+            chmod +x scripts/deploy_commit.sh
+            ./scripts/deploy_commit.sh
 
             # Clean up dangling images
             docker image prune -af

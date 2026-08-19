@@ -59,7 +59,7 @@ If you need to backup your local database or restore a dump file (like one downl
 
 **Backup Local Database:**
 ```bash
-docker exec silo_db pg_dump -U silo_user -Fc silo > local_backup.dump
+docker exec silo_db pg_dump -U $DB_USER -Fc $DB_NAME > local_backup.dump
 ```
 
 **Restore to Local Database:**
@@ -68,14 +68,14 @@ Assuming you have a file named `prod_backup.dump` in your current folder:
 # 1. Copy the backup file into your local database container
 docker cp prod_backup.dump silo_db:/tmp/prod_backup.dump
 
-# 2. Quarantine your current local database (renames it to silo_old)
-docker exec silo_db psql -U silo_user -d postgres -c "ALTER DATABASE silo RENAME TO silo_old_$(date +%s);"
+# 2. Quarantine your current local database (renames it to ${DB_NAME}_old)
+docker exec silo_db psql -U $DB_USER -d postgres -c "ALTER DATABASE $DB_NAME RENAME TO ${DB_NAME}_old_$(date +%s);"
 
 # 3. Create a fresh, empty database
-docker exec silo_db createdb -U silo_user silo
+docker exec silo_db createdb -U $DB_USER $DB_NAME
 
 # 4. Restore the data into the fresh database
-docker exec silo_db pg_restore -U silo_user -d silo --clean --if-exists --no-owner --no-privileges /tmp/prod_backup.dump
+docker exec silo_db pg_restore -U $DB_USER -d $DB_NAME --clean --if-exists --no-owner --no-privileges /tmp/prod_backup.dump
 
 # 5. Clean up the temporary file
 docker exec silo_db rm /tmp/prod_backup.dump
@@ -98,19 +98,24 @@ Knowing how to restart or stop your app safely is crucial.
   *⚠️ WARNING: The `-v` flag deletes your named volumes (Postgres and Redis data). ALL your local database data and queued tasks will be permanently lost.*
 
 ## Production Operations
-Production commands must explicitly specify the production compose file (`docker-compose.prod.yml`) if your server doesn't automatically rename it.
 
 ### 🌐 Viewing Production Logs
 To check the status of your live application:
-- **Web App:** `docker compose -f docker-compose.prod.yml logs -f web`
-- **Backup Sidecar:** `docker compose -f docker-compose.prod.yml logs -f backup-sidecar`
+- **Web App:** `docker compose logs -f web`
+- **Backup Sidecar:** `docker compose logs -f backup-sidecar`
+- **Celery Worker:** `docker compose logs -f celery`
+- **PostgreSQL Database:** `docker compose logs -f db`
+- **Redis Cache:** `docker compose logs -f redis`
+- **All Services:** `docker compose logs -f`
 
 ### 💾 Production Database Backup & Restore
+
+#### ☁️ Automated Cloudflare Backups
 In production, your backups are automatically synced to Cloudflare R2 every midnight by the `backup-sidecar`.
 
 **Trigger a Manual Cloudflare Backup:**
 ```bash
-docker compose -f docker-compose.prod.yml exec backup-sidecar sh backup.sh
+docker compose exec backup-sidecar sh backup.sh
 ```
 
 **Perform Emergency Disaster Recovery (Restore from Cloudflare R2):**
@@ -120,8 +125,43 @@ chmod +x restore_latest.sh
 ./restore_latest.sh
 ```
 
+#### 🛠️ Pure Manual Backup & Restore (No Cloudflare)
+If you want to manually create a dump file on the VPS disk or restore a file directly without involving Cloudflare, use these commands against the `db` service:
+
+**Manual Local Backup (on the VPS):**
+```bash
+docker compose exec db pg_dump -U $DB_USER -Fc $DB_NAME > manual_prod_backup.dump
+```
+
+**Manual Local Restore (on the VPS):**
+Assuming you have a file named `manual_prod_backup.dump` on the VPS:
+```bash
+# 1. Copy the backup file into the database container
+docker cp ./manual_prod_backup.dump silo_db_prod:/tmp/manual_prod_backup.dump
+# verify the file has been copied
+docker compose exec db ls -l /tmp
+
+# 2. Quarantine your current database (renames it to ${DB_NAME}_old)
+docker compose exec db psql -U $DB_USER -d postgres -c "ALTER DATABASE $DB_NAME RENAME TO ${DB_NAME}_old_$(date +%s);"
+
+# if any ERROR:  database "silo" is being accessed by other users
+# 1. create a fresh db
+# 2. change the db name in .env
+# 3. restart the services
+
+
+# 3. Create a fresh, empty database
+docker compose exec db createdb -U $DB_USER $DB_NAME
+
+# 4. Restore the data into the fresh database
+docker compose exec db pg_restore -U $DB_USER -d $DB_NAME --clean --if-exists --no-owner --no-privileges /tmp/manual_prod_backup.dump
+
+# 5. Clean up the temporary file
+docker compose exec db rm /tmp/manual_prod_backup.dump
+```
+
 ### ⚙️ Running Production Django Commands
 To run commands like creating an admin user on the live database:
 ```bash
-docker compose -f docker-compose.prod.yml exec web python manage.py createsuperuser
+docker compose exec web python manage.py createsuperuser
 ```

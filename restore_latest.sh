@@ -35,29 +35,29 @@ echo "🔒 1. Enabling Host Nginx Emergency Maintenance Mode..."
 sudo touch $MAINTENANCE_FLAG || echo "⚠️ Could not touch maintenance flag, skipping..."
 
 echo "☁️  2. Fetching the latest backup from Cloudflare R2..."
-LATEST_DUMP=$(docker compose -f docker-compose.prod.yml exec -T backup-sidecar sh -c "aws s3 ls s3://\${BACKUP_S3_BUCKET}/ --endpoint-url \${AWS_S3_ENDPOINT_URL} | sort | tail -n 1 | awk '{print \$4}'")
+LATEST_DUMP=$(docker compose  exec -T backup-sidecar sh -c "aws s3 ls s3://\${BACKUP_S3_BUCKET}/backup/ --endpoint-url \${AWS_S3_ENDPOINT_URL} | sort | tail -n 1 | awk '{print \$4}'")
 echo "   Found latest backup: $LATEST_DUMP"
-docker compose -f docker-compose.prod.yml exec -T backup-sidecar sh -c "aws s3 cp s3://\${BACKUP_S3_BUCKET}/$LATEST_DUMP /tmp/latest_backup.dump --endpoint-url \${AWS_S3_ENDPOINT_URL}"
+docker compose  exec -T backup-sidecar sh -c "aws s3 cp s3://\${BACKUP_S3_BUCKET}/backup/$LATEST_DUMP /tmp/latest_backup.dump --endpoint-url \${AWS_S3_ENDPOINT_URL}"
 
 # Copy the dump from the sidecar to the primary db container
-docker cp $(docker compose -f docker-compose.prod.yml ps -q backup-sidecar):/tmp/latest_backup.dump /tmp/latest_backup.dump
-docker cp /tmp/latest_backup.dump $(docker compose -f docker-compose.prod.yml ps -q db):/tmp/latest_backup.dump
+docker cp $(docker compose  ps -q backup-sidecar):/tmp/latest_backup.dump /tmp/latest_backup.dump
+docker cp /tmp/latest_backup.dump $(docker compose  ps -q db):/tmp/latest_backup.dump
 
 echo "🛡️  3. Quarantining the active database (Zero-Overwrite Rule)..."
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-docker compose -f docker-compose.prod.yml exec -T db psql -U "$DB_USER" -d postgres -c "ALTER DATABASE \"$DB_NAME\" RENAME TO \"${DB_NAME}_corrupted_$TIMESTAMP\";" || echo "⚠️ Could not rename active DB. Continuing..."
+docker compose  exec -T db psql -U "$DB_USER" -d postgres -c "ALTER DATABASE \"$DB_NAME\" RENAME TO \"${DB_NAME}_corrupted_$TIMESTAMP\";" || echo "⚠️ Could not rename active DB. Continuing..."
 
 echo "🏗️  4. Creating target recovery database..."
-docker compose -f docker-compose.prod.yml exec -T db createdb -U "$DB_USER" "${DB_NAME}_recovery"
+docker compose  exec -T db createdb -U "$DB_USER" "${DB_NAME}_recovery"
 
 echo "📥 5. Restoring database schema and data..."
-docker compose -f docker-compose.prod.yml exec -T db pg_restore -U "$DB_USER" -d "${DB_NAME}_recovery" --clean --if-exists --no-owner --no-privileges /tmp/latest_backup.dump
+docker compose  exec -T db pg_restore -U "$DB_USER" -d "${DB_NAME}_recovery" --clean --if-exists --no-owner --no-privileges /tmp/latest_backup.dump
 
 echo "🔎 6. Verifying table integrity..."
-docker compose -f docker-compose.prod.yml exec -T db psql -U "$DB_USER" -d "${DB_NAME}_recovery" -c "\dt"
+docker compose  exec -T db psql -U "$DB_USER" -d "${DB_NAME}_recovery" -c "\dt"
 
 echo "🔄 7. Cutting over to restored database..."
-docker compose -f docker-compose.prod.yml exec -T db psql -U "$DB_USER" -d postgres -c "ALTER DATABASE \"${DB_NAME}_recovery\" RENAME TO \"$DB_NAME\";"
+docker compose  exec -T db psql -U "$DB_USER" -d postgres -c "ALTER DATABASE \"${DB_NAME}_recovery\" RENAME TO \"$DB_NAME\";"
 
 echo "🔓 8. Disabling Maintenance Mode..."
 sudo rm -f $MAINTENANCE_FLAG || echo "⚠️ Could not remove maintenance flag"

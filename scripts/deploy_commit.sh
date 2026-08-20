@@ -1,9 +1,20 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status.
 
-APP_DIR="/var/www/silo"
-MAINTENANCE_FLAG="/var/www/html/silo-maintenance/.silo_maintenance"
-HEALTH_ENDPOINT="http://127.0.0.1:8000/health/"
+# Go to the root application directory (parent of scripts/)
+# We need the /.. because this script is inside the scripts/ folder
+cd "$(dirname "$0")/.."
+APP_DIR=$(pwd)
+
+# Load environment variables
+if [ -f "$APP_DIR/.env" ]; then
+    set -a
+    source "$APP_DIR/.env"
+    set +a
+fi
+
+MAINTENANCE_FLAG="${MAINTENANCE_FLAG}"
+HEALTH_ENDPOINT="${HEALTH_ENDPOINT}"
 
 # --- Cleanup Trap ---
 # Ensures maintenance mode is disabled if the script crashes midway.

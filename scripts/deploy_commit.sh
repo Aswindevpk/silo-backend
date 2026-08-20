@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status.
 
-# Go to the directory where this script is located
-cd "$(dirname "$0")"
+# Go to the root application directory (parent of scripts/)
+# We need the /.. because this script is inside the scripts/ folder
+cd "$(dirname "$0")/.."
 APP_DIR=$(pwd)
 
 # Load environment variables
@@ -14,6 +15,11 @@ fi
 
 MAINTENANCE_FLAG="${MAINTENANCE_FLAG}"
 HEALTH_ENDPOINT="${HEALTH_ENDPOINT}"
+
+if [ -z "$MAINTENANCE_FLAG" ]; then
+    echo "❌ Error: MAINTENANCE_FLAG is not set. Please set it in your .env file."
+    exit 1
+fi
 
 # --- Cleanup Trap ---
 # Ensures maintenance mode is disabled if the script crashes midway.
@@ -51,7 +57,7 @@ HEALTHY=false
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -H "Host: silo-api.aswindev.in" -H "X-Forwarded-Proto: https" $HEALTH_ENDPOINT || true)
     HTTP_STATUS=${HTTP_STATUS:-000}
-    
+
     if [ "$HTTP_STATUS" -eq 200 ]; then
         echo "✅ Health check passed! (HTTP 200)"
         HEALTHY=true
@@ -73,4 +79,4 @@ echo "🔓 7. Disabling Maintenance Mode..."
 sudo rm -f $MAINTENANCE_FLAG
 trap - ERR # Remove error trap on success
 
-echo "🎉 Deployment completed successfully!"
+echo "🎉 Deployment completed!"

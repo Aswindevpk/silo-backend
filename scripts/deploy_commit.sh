@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e # Exit immediately if a command exits with a non-zero status.
 
-# Go to the directory where this script is located
-cd "$(dirname "$0")"
+# Go to the root application directory (parent of scripts/)
+# We need the /.. because this script is inside the scripts/ folder
+cd "$(dirname "$0")/.."
 APP_DIR=$(pwd)
 
 # Load environment variables

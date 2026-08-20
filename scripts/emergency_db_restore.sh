@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# We need the /.. because this script is inside the scripts/ folder
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
 # Load environment variables

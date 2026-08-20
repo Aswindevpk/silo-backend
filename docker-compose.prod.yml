@@ -45,14 +45,14 @@ services:
   web:
     image: aswindevpk/silo-web:latest
     restart: always
-    command: gunicorn --access-logfile - -k uvicorn.workers.UvicornWorker --workers 2 --bind 0.0.0.0:8000 config.asgi:application
+    command: gunicorn --access-logfile - -k uvicorn.workers.UvicornWorker --workers 2 --bind 0.0.0.0:${APP_PORT} config.asgi:application
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
     ports:
-      - "127.0.0.1:${APP_PORT}:8000"
+      - "127.0.0.1:${APP_PORT}:${APP_PORT}"
     volumes:
       - ./staticfiles:/app/staticfiles
       - ./media:/app/media

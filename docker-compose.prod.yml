@@ -2,7 +2,6 @@
 services:
   db:
     image: postgres:15
-    container_name: silo_db_prod
     restart: always
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -18,7 +17,6 @@ services:
 
   backup-sidecar:
     image: eeshugerman/postgres-backup-s3:15
-    container_name: silo_backup_sidecar_prod
     restart: always
     depends_on:
       - db
@@ -29,17 +27,16 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_EXTRA_OPTS: "-Fc"
-      S3_ENDPOINT: ${AWS_S3_ENDPOINT_URL}
+      S3_ENDPOINT: ${BACKUP_S3_ENDPOINT}
       S3_BUCKET: ${BACKUP_S3_BUCKET}
       S3_PREFIX: "backup"
       S3_REGION: "auto"
       S3_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       S3_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-      BACKUP_KEEP_DAYS: 14
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS}
 
   redis:
     image: redis:7-alpine
-    container_name: silo_redis_prod
     restart: always
     command: redis-server --appendonly yes
     volumes:
@@ -47,7 +44,6 @@ services:
 
   web:
     image: aswindevpk/silo-web:latest
-    container_name: silo_web_prod
     restart: always
     command: gunicorn --access-logfile - -k uvicorn.workers.UvicornWorker --workers 2 --bind 0.0.0.0:8000 config.asgi:application
     depends_on:
@@ -56,7 +52,7 @@ services:
       redis:
         condition: service_started
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${APP_PORT}:8000"
     volumes:
       - ./staticfiles:/app/staticfiles
       - ./media:/app/media
@@ -67,7 +63,6 @@ services:
 
   celery:
     image: aswindevpk/silo-web:latest
-    container_name: silo_celery_prod
     restart: always
     command: celery -A config worker --loglevel=INFO 
     depends_on:

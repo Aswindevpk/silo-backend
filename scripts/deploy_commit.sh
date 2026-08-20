@@ -15,9 +15,15 @@ fi
 
 MAINTENANCE_FLAG="${MAINTENANCE_FLAG}"
 HEALTH_ENDPOINT="${HEALTH_ENDPOINT}"
+API_DOMAIN="${API_DOMAIN}"
 
 if [ -z "$MAINTENANCE_FLAG" ]; then
     echo "❌ Error: MAINTENANCE_FLAG is not set. Please set it in your .env file."
+    exit 1
+fi
+
+if [ -z "$API_DOMAIN" ]; then
+    echo "❌ Error: API_DOMAIN is not set. Please set it in your .env file (e.g. API_DOMAIN=api.yourdomain.com)."
     exit 1
 fi
 
@@ -55,7 +61,7 @@ RETRY_COUNT=0
 HEALTHY=false
 
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -H "Host: silo-api.aswindev.in" -H "X-Forwarded-Proto: https" $HEALTH_ENDPOINT || true)
+    HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" -H "Host: $API_DOMAIN" -H "X-Forwarded-Proto: https" $HEALTH_ENDPOINT || true)
     HTTP_STATUS=${HTTP_STATUS:-000}
 
     if [ "$HTTP_STATUS" -eq 200 ]; then

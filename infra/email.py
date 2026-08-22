@@ -124,17 +124,18 @@ class EmailManager:
         """
         html_content = EmailManager.get_base_html_template(content)
 
-        resend.api_key = settings.RESEND_API_KEY
-        try:
-            resend.Emails.send({
-                "from": "Silo <noreply@silo.aswindev.in>",
-                "to": user.email,
-                "subject": "Verify your email",
-                "html": html_content
-            })
-            logger.info(f"Verification email sent to {user.email}")
-        except Exception as e:
-            logger.error(f"Failed to send verification email to {user.email}: {e}")
+        if not settings.DEBUG:
+            resend.api_key = settings.RESEND_API_KEY
+            try:
+                resend.Emails.send({
+                    "from": "Silo <noreply@silo.aswindev.in>",
+                    "to": user.email,
+                    "subject": "Verify your email",
+                    "html": html_content
+                })
+                logger.info(f"Verification email sent to {user.email}")
+            except Exception as e:
+                logger.error(f"Failed to send verification email to {user.email}: {e}")
 
         message = (
                 f"\n"
@@ -170,17 +171,18 @@ class EmailManager:
         """
         html_content = EmailManager.get_base_html_template(content)
 
-        resend.api_key = settings.RESEND_API_KEY
-        try:
-            resend.Emails.send({
-                "from": "Silo <noreply@silo.aswindev.in>",
-                "to": user.email,
-                "subject": "Reset your password",
-                "html": html_content
-                })
-            logger.info(f"Password reset email sent to {user.email}")
-        except Exception as e:
-            logger.error(f"Failed to send password reset email to {user.email}: {e}")
+        if not settings.DEBUG:
+            resend.api_key = settings.RESEND_API_KEY
+            try:
+                resend.Emails.send({
+                    "from": "Silo <noreply@silo.aswindev.in>",
+                    "to": user.email,
+                    "subject": "Reset your password",
+                    "html": html_content
+                    })
+                logger.info(f"Password reset email sent to {user.email}")
+            except Exception as e:
+                logger.error(f"Failed to send password reset email to {user.email}: {e}")
 
         message = (
                 f"\n"
@@ -214,17 +216,18 @@ class EmailManager:
         """
         html_content = EmailManager.get_base_html_template(content)
 
-        resend.api_key = settings.RESEND_API_KEY
-        try:
-            resend.Emails.send({
-                "from": "Silo <noreply@silo.aswindev.in>",
-                "to": invitation.email,
-                "subject": f"You're invited to join {workspace_name} on Silo",
-                "html": html_content
-            })
-            logger.info(f"Workspace invitation email sent to {invitation.email}")
-        except Exception as e:
-            logger.error(f"Failed to send workspace invitation email to {invitation.email}: {e}")
+        if not settings.DEBUG:
+            resend.api_key = settings.RESEND_API_KEY
+            try:
+                resend.Emails.send({
+                    "from": "Silo <noreply@silo.aswindev.in>",
+                    "to": invitation.email,
+                    "subject": f"You're invited to join {workspace_name} on Silo",
+                    "html": html_content
+                })
+                logger.info(f"Workspace invitation email sent to {invitation.email}")
+            except Exception as e:
+                logger.error(f"Failed to send workspace invitation email to {invitation.email}: {e}")
 
         message = (
                 f"\n"

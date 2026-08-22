@@ -17,7 +17,7 @@ class WorkspaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Workspace
         fields = ['id', 'name', 'slug', 'created_at', 'owner_email', 'is_default', 'plan', 'subscription_status']
-        read_only_fields = ['id', 'created_at', 'plan', 'subscription_status']
+        read_only_fields = ['id', 'created_at', 'plan', 'subscription_status', 'slug']
 
     def get_is_default(self, obj):
         request = self.context.get('request')

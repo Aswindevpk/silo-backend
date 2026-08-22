@@ -35,24 +35,44 @@ Since your database runs inside Docker, you must apply migrations to the contain
 docker compose exec web uv run python manage.py migrate
 ```
 
-### 4. Default Admin Account
+### 4. Create Superuser
 A default admin account has been created for local development. You can log into the Django Admin dashboard at `http://localhost:8000/admin/` with these credentials:
+
+*(If you ever wipe your database and need to recreate this user, you can run:)*
+
+```bash
+docker compose exec web uv run python manage.py createsuperuser
+```
 
 - **Email:** `admin@silo.com`
 - **Username:** `admin`
 - **Password:** `password`
 
-*(If you ever wipe your database and need to recreate this user, you can run: `docker compose exec web uv run python manage.py createsuperuser`)*
-
 ## Interacting with the Containers
 
 ### 🔍 Viewing Logs
 To see real-time logs for specific services, you can use the `logs -f` command:
-- **Web App:** `docker compose logs -f web`
-- **Celery Worker:** `docker compose logs -f celery`
-- **PostgreSQL Database:** `docker compose logs -f db`
-- **Redis Cache:** `docker compose logs -f redis`
-- **All Services:** `docker compose logs -f`
+
+- **Web App:**
+  ```bash
+  docker compose logs -f web
+  ```
+- **Celery Worker:**
+  ```bash
+  docker compose logs -f celery
+  ```
+- **PostgreSQL Database:**
+  ```bash
+  docker compose logs -f db
+  ```
+- **Redis Cache:**
+  ```bash
+  docker compose logs -f redis
+  ```
+- **All Services:**
+  ```bash
+  docker compose logs -f
+  ```
 
 ### 💾 Local Database Backup & Restore
 If you need to backup your local database or restore a dump file (like one downloaded from production), you can run these commands against your local database container (`silo_db`):
@@ -85,10 +105,39 @@ docker exec silo_db rm /tmp/prod_backup.dump
 Knowing how to restart or stop your app safely is crucial. 
 
 **✅ SAFE COMMANDS (Keeps your database data intact):**
-- **Stop all containers:** `docker compose down` (Safely stops the app)
-- **Start all containers:** `docker compose up -d` (Resumes where you left off)
-- **Restart one service:** `docker compose restart web`
-- **Run Django commands:** `docker compose exec web python manage.py <command>`
+- **Stop all containers:** 
+```bash
+docker compose down
+```
+(Safely stops the app)
+
+- **Start all containers:** 
+```bash
+docker compose up -d
+```
+(Resumes where you left off)
+
+- **Restart one service:** 
+```bash
+docker compose restart web
+```
+
+- **Run Django commands:** 
+```bash
+docker compose exec web python manage.py <command>
+```
+
+- **Seed Test Users:** 
+```bash
+docker compose exec web python manage.py setup_dev_data
+```
+(Creates verified sample accounts: alice, bob, charlie @example.com with password `pass@123`)
+
+- **Check Deployment Readiness:** 
+```bash
+docker compose exec web python manage.py check --deploy --settings=config.settings.production
+```
+*(Note: Since this tests production security, you must ensure your `.env` contains all required production variables like `ALLOWED_HOSTS`, otherwise it will intentionally fail to protect you!)*
 
 **❌ DESTRUCTIVE COMMANDS (Deletes data):**
 - **Wipe everything (Containers + Database Volumes):** 

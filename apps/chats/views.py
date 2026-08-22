@@ -100,7 +100,12 @@ class PresignedUploadView(APIView):
             # Generate the read URL
             custom_domain = getattr(settings, 'AWS_S3_CUSTOM_DOMAIN', None)
             if custom_domain:
-                read_url = f"https://{custom_domain}/{object_name}"
+                # Handle cases where custom_domain in .env already includes https://
+                custom_domain = custom_domain.rstrip('/')
+                if custom_domain.startswith('http'):
+                    read_url = f"{custom_domain}/{object_name}"
+                else:
+                    read_url = f"https://{custom_domain}/{object_name}"
             elif getattr(settings, 'AWS_S3_ENDPOINT_URL', None):
                 base_url = settings.AWS_S3_ENDPOINT_URL
                 read_url = f"{base_url}/{settings.AWS_STORAGE_BUCKET_NAME}/{object_name}"

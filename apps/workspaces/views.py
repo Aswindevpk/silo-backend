@@ -39,16 +39,16 @@ class WorkspaceListCreateView(APIView):
 
     def post(self, request):
         # Check how many free workspaces the user has created
-        # created_workspaces_count = Workspace.objects.filter(
-        #     owner=request.user,
-        #     plan__slug='free'
-        # ).count()
+        created_workspaces_count = Workspace.objects.filter(
+            owner=request.user,
+            plan__slug='free'
+        ).count()
 
-        # if created_workspaces_count >= 2:
-        #     return Response(
-        #         {"detail": "Free users can only create up to 2 workspaces. Please upgrade to create more."},
-        #         status=status.HTTP_403_FORBIDDEN
-        #     )
+        if created_workspaces_count >= 2:
+            return Response(
+                {"detail": "Free users can only create up to 2 workspaces. Please upgrade to create more."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         serializer = WorkspaceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

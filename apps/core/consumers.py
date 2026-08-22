@@ -14,18 +14,27 @@ class GlobalMultiplexConsumer(AsyncJsonWebsocketConsumer):
     """
 
     async def connect(self):
-        if not hasattr(self.scope, 'user') or not self.scope['user'].is_authenticated:
-            await self.close(code=4001)
-            return
+        try:
+            if 'user' not in self.scope or not self.scope['user'].is_authenticated:
+                print("CONSUMER REJECTING: User not authenticated")
+                await self.close(code=4001)
+                return
 
-        self.user = self.scope['user']
-        await self.accept()
+            self.user = self.scope['user']
+            print("CONSUMER CALLING ACCEPT")
+            await self.accept()
+            print("CONSUMER ACCEPTED")
 
-        self.presence_handler = PresenceHandler(self)
-        self.chat_handler = ChatHandler(self)
-        self.call_handler = CallHandler(self)
+            self.presence_handler = PresenceHandler(self)
+            self.chat_handler = ChatHandler(self)
+            self.call_handler = CallHandler(self)
 
-        await self.presence_handler.handle_connect()
+            print("CONSUMER CALLING PRESENCE HANDLER")
+            await self.presence_handler.handle_connect()
+            print("CONSUMER FULLY CONNECTED")
+        except Exception as e:
+            print(f"CONSUMER EXCEPTION IN CONNECT: {e}")
+            raise
 
     async def disconnect(self, close_code):
         if hasattr(self, 'presence_handler'):

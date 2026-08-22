@@ -276,6 +276,7 @@ class StandardLoginView(APIView):
                 "message": "Login successful.",
                 "data": {
                     "user": {
+                        "id": authenticated_user.id,
                         "username": authenticated_user.username,
                         "email": authenticated_user.email,
                         "default_workspace_slug": default_membership.workspace.slug if default_membership else None,
@@ -620,7 +621,8 @@ class PresenceAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from .consumers import redis_client, PRESENCE_KEY
+        from apps.core.redis_client import redis_client
+        PRESENCE_KEY = "silo_online_users"
         online_users = list(redis_client.smembers(PRESENCE_KEY))
         # Convert to integers
         online_users = [int(uid) for uid in online_users if uid.isdigit()]
@@ -629,3 +631,26 @@ class PresenceAPIView(APIView):
             "message": "Fetched online users.",
             "data": online_users
         }, status=status.HTTP_200_OK)
+
+class ProfileAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        
+        from apps.workspaces.models import WorkspaceMember
+        default_membership = WorkspaceMember.objects.filter(user=user, is_default=True).first()
+        
+        return Response(
+            {
+                "success": True,
+                "message": "Fetched user profile.",
+                "data": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "default_workspace_slug": default_membership.workspace.slug if default_membership else None,
+                }
+            },
+            status=status.HTTP_200_OK,
+        )

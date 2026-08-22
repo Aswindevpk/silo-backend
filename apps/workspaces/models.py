@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
+from django.utils.text import slugify
 
 User = get_user_model()
 
@@ -37,6 +38,11 @@ class Workspace(TimeStampedModel):
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True)
     stripe_subscription_id = models.CharField(max_length=255, blank=True, null=True)
     subscription_status = models.CharField(max_length=50, default='active')
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = uuid.uuid4().hex[16:]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

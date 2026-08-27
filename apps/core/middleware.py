@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 class JWTAuthMiddleware:
     """
-    WebSocket Middleware that extracts JWT token from query string (?token=...)
-    or cookies and authenticates the user.
+    WebSocket Middleware that extracts JWT token from cookies and authenticates the user.
     """
     def __init__(self, inner):
         self.inner = inner
@@ -36,25 +35,17 @@ class JWTAuthMiddleware:
     async def __call__(self, scope, receive, send):
         token = None
         
-        # 1. Try to get token from query string
-        query_string = scope.get('query_string', b'').decode('utf-8')
-        query_params = urllib.parse.parse_qs(query_string)
-        token = query_params.get('token', [None])[0]
-        
-        # 2. Try to get token from cookies
-        if not token:
-            for name, value in scope.get('headers', []):
-                if name == b'cookie':
-                    cookies = value.decode('utf-8').split(';')
-                    for cookie in cookies:
-                        cookie = cookie.strip()
-                        if cookie.startswith(settings.SIMPLE_JWT.get('AUTH_COOKIE', 'access') + '='):
-                            token = cookie.split('=', 1)[1]
-                            break
-                    break
+        # Get token from cookies
+        for name, value in scope.get('headers', []):
+            if name == b'cookie':
+                cookies = value.decode('utf-8').split(';')
+                for cookie in cookies:
+                    cookie = cookie.strip()
+                    if cookie.startswith(settings.SIMPLE_JWT.get('AUTH_COOKIE', 'access') + '='):
+                        token = cookie.split('=', 1)[1]
+                        break
         
         if token:
-            print(f"MIDDLEWARE FOUND TOKEN: {token[:10]}...")
             user = await get_user_from_token(token)
             scope['user'] = user
             if user.is_authenticated:

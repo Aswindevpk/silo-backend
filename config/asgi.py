@@ -32,9 +32,7 @@ from apps.core.middleware import JWTAuthMiddlewareStack
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
-    "websocket": JWTAuthMiddlewareStack(
-        URLRouter(websocket_urlpatterns)
-    ),
+    "websocket": JWTAuthMiddlewareStack(URLRouter(websocket_urlpatterns)),
 })
 
 # Wrap the root ProtocolTypeRouter application with ASGIStaticFilesHandler for local development

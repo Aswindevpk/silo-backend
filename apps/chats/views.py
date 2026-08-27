@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.workspaces.models import Workspace, WorkspaceMember
 from .models import Channel, Message
 from .serializers import ChannelSerializer, MessageSerializer
+from apps.core.pagination import StandardResultsSetPagination
 
 class ChannelListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -46,13 +47,18 @@ class ChannelListCreateView(APIView):
 
 class MessageListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
 
     def get(self, request, channel_id):
         channel = get_object_or_404(Channel, id=channel_id)
         
-        messages = channel.messages.all().order_by('created_at')
-        serializer = MessageSerializer(messages, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        messages = channel.messages.all().order_by('-created_at')
+        
+        paginator = self.pagination_class()
+        paginated_messages = paginator.paginate_queryset(messages, request)
+        
+        serializer = MessageSerializer(paginated_messages, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 class PresignedUploadView(APIView):
     permission_classes = [permissions.IsAuthenticated]

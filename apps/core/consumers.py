@@ -1,9 +1,10 @@
-import json
 import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from apps.users.handlers import PresenceHandler
 from apps.chats.handlers import ChatHandler
 from apps.calls.handlers import CallHandler
+from apps.chats.models import ChannelMember
+from asgiref.sync import sync_to_async
 
 logger = logging.getLogger(__name__)
 
@@ -14,29 +15,39 @@ class GlobalMultiplexConsumer(AsyncJsonWebsocketConsumer):
     """
 
     async def connect(self):
+        print(self)
         try:
             if 'user' not in self.scope or not self.scope['user'].is_authenticated:
-                print("CONSUMER REJECTING: User not authenticated")
                 await self.close(code=4001)
                 return
 
             self.user = self.scope['user']
-            print("CONSUMER CALLING ACCEPT")
             await self.accept()
-            print("CONSUMER ACCEPTED")
+
+            # Automatically subscribe the user to all their channels
+            channel_ids = await sync_to_async(list)(
+                ChannelMember.objects.filter(user=self.user).values_list('channel_id', flat=True)
+            )
+            self.subscribed_channels = channel_ids
+            for channel_id in channel_ids:
+                await self.channel_layer.group_add(
+                    f"channel_{channel_id}", self.channel_name
+                )
 
             self.presence_handler = PresenceHandler(self)
             self.chat_handler = ChatHandler(self)
             self.call_handler = CallHandler(self)
-
-            print("CONSUMER CALLING PRESENCE HANDLER")
             await self.presence_handler.handle_connect()
-            print("CONSUMER FULLY CONNECTED")
         except Exception as e:
-            print(f"CONSUMER EXCEPTION IN CONNECT: {e}")
             raise
 
     async def disconnect(self, close_code):
+        if hasattr(self, 'subscribed_channels'):
+            for channel_id in self.subscribed_channels:
+                await self.channel_layer.group_discard(
+                    f"channel_{channel_id}", self.channel_name
+                )
+        
         if hasattr(self, 'presence_handler'):
             await self.presence_handler.handle_disconnect()
         if hasattr(self, 'call_handler'):
@@ -49,17 +60,27 @@ class GlobalMultiplexConsumer(AsyncJsonWebsocketConsumer):
         channel_id = content.get("channel_id")
         payload = content.get("payload", {})
 
-        if event_type == "room.subscribe":
-            await self.channel_layer.group_add(
-                f"channel_{channel_id}", self.channel_name
-            )
-            return
-        elif event_type == "room.unsubscribe":
-            await self.channel_layer.group_discard(
-                f"channel_{channel_id}", self.channel_name
-            )
-            return
-        elif event_type == "system.ping":
+        # Auto-subscribe dynamically if the user interacts with a new channel they aren't subscribed to yet
+        if channel_id:
+            try:
+                cid = int(channel_id)
+                if hasattr(self, 'subscribed_channels') and cid not in self.subscribed_channels:
+                    await self.channel_layer.group_add(f"channel_{cid}", self.channel_name)
+                    self.subscribed_channels.append(cid)
+            except (ValueError, TypeError):
+                pass
+
+        # if event_type == "room.subscribe":
+        #     await self.channel_layer.group_add(
+        #         f"channel_{channel_id}", self.channel_name
+        #     )
+        #     return
+        # elif event_type == "room.unsubscribe":
+        #     await self.channel_layer.group_discard(
+        #         f"channel_{channel_id}", self.channel_name
+        #     )
+        #     return
+        if event_type == "system.ping":
             await self.send_json({"type": "system.pong"})
             return
 
@@ -69,6 +90,12 @@ class GlobalMultiplexConsumer(AsyncJsonWebsocketConsumer):
             await self.call_handler.handle_event(event_type, workspace_id, channel_id, payload)
 
     # --- Relay methods invoked via channel_layer.group_send ---
+    async def presence_status_broadcast(self, event):
+        await self.send_json({
+            "type": "presence.status_change",
+            "payload": event["payload"],
+        })
+
     async def chat_message_broadcast(self, event):
         await self.send_json({
             "type": "chat.message_received",

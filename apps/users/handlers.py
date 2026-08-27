@@ -13,6 +13,7 @@ class PresenceHandler:
 
     async def handle_connect(self):
         await self.consumer.channel_layer.group_add(self.user_group, self.consumer.channel_name)
+        await self.consumer.channel_layer.group_add("global_presence", self.consumer.channel_name)
         redis_client.sadd(PRESENCE_KEY, str(self.user.id))
         await self.broadcast_presence("online")
 
@@ -20,12 +21,14 @@ class PresenceHandler:
         redis_client.srem(PRESENCE_KEY, str(self.user.id))
         await self.broadcast_presence("offline")
         await self.consumer.channel_layer.group_discard(self.user_group, self.consumer.channel_name)
+        await self.consumer.channel_layer.group_discard("global_presence", self.consumer.channel_name)
 
     async def broadcast_presence(self, status):
         """Notifies user groups of status updates."""
-        await self.consumer.send_json(
+        await self.consumer.channel_layer.group_send(
+            "global_presence",
             {
-                "type": "presence.status_change",
+                "type": "presence_status_broadcast",
                 "payload": {"user_id": str(self.user.id), "status": status},
             }
         )

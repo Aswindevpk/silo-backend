@@ -1,7 +1,6 @@
-from django.urls import re_path
+from django.urls import path
 from apps.core.consumers import GlobalMultiplexConsumer
 
 websocket_urlpatterns = [
-    # Allow with or without trailing slash
-    re_path(r'^ws/users/?$', GlobalMultiplexConsumer.as_asgi()),
+    path('ws/users/', GlobalMultiplexConsumer.as_asgi()),
 ]
